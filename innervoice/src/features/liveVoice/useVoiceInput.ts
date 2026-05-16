@@ -7,12 +7,14 @@ interface UseVoiceInputOptions {
   onActivity?: () => void
   onError?: (message: string) => void
   onSilentCapture?: () => void
+  /** Ms of silence before the current utterance is sent (live default: 3000). */
+  silenceMs?: number
+  minRecordMs?: number
 }
 
-// Balance: short enough to feel live, long enough for clean transcripts.
-const SILENCE_MS = 400
-const MIN_RECORD_MS = 280
-const MAX_RECORD_MS = 18000
+const DEFAULT_SILENCE_MS = 400
+const DEFAULT_MIN_RECORD_MS = 280
+const MAX_RECORD_MS = 120000
 const RMS_THRESHOLD = 0.005
 const MIN_BLOB_BYTES = 900
 const CYCLE_RESTART_MS = 50
@@ -23,7 +25,15 @@ export function useVoiceInput({
   onActivity,
   onError,
   onSilentCapture,
+  silenceMs = DEFAULT_SILENCE_MS,
+  minRecordMs = DEFAULT_MIN_RECORD_MS,
 }: UseVoiceInputOptions) {
+  const silenceMsRef = useRef(silenceMs)
+  const minRecordMsRef = useRef(minRecordMs)
+  useEffect(() => {
+    silenceMsRef.current = silenceMs
+    minRecordMsRef.current = minRecordMs
+  }, [silenceMs, minRecordMs])
   const [isSupported] = useState(
     Boolean(navigator.mediaDevices && typeof MediaRecorder !== 'undefined'),
   )
@@ -227,8 +237,8 @@ export function useVoiceInput({
 
     silenceTimerRef.current = window.setInterval(() => {
       if (!runningRef.current || sessionIdRef.current !== sid) return
-      if (Date.now() - recordStartRef.current < MIN_RECORD_MS) return
-      if (Date.now() - lastAudioAtRef.current >= SILENCE_MS) stopRecorder()
+      if (Date.now() - recordStartRef.current < minRecordMsRef.current) return
+      if (Date.now() - lastAudioAtRef.current >= silenceMsRef.current) stopRecorder()
     }, 50)
 
     maxTimerRef.current = window.setTimeout(() => stopRecorder(), MAX_RECORD_MS)
@@ -279,6 +289,18 @@ export function useVoiceInput({
     startCycle(stream, sid)
   }, [startCycle, startListening])
 
+  /** End the current utterance now (orb tap) — same as 3s silence send. */
+  const flushUtterance = useCallback(() => {
+    if (!runningRef.current) return
+    const rec = recorderRef.current
+    if (!rec || rec.state === 'inactive') {
+      if (streamRef.current) startCycle(streamRef.current, sessionIdRef.current)
+      return
+    }
+    capturePausedRef.current = false
+    stopRecorder()
+  }, [startCycle, stopRecorder])
+
   useEffect(() => () => stopListening(), [stopListening])
 
   return {
@@ -290,5 +312,6 @@ export function useVoiceInput({
     stopListening,
     pauseCapture,
     resumeCapture,
+    flushUtterance,
   }
 }

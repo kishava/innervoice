@@ -14,6 +14,8 @@ interface Props {
 }
 
 const SILENCE_AUTO_CLOSE_MS = 20000
+/** End-of-utterance: 3s pause sends the question (chat-style Q&A). */
+const UTTERANCE_SILENCE_MS = 3000
 /** Show a thinking hint in UI only (no TTS) if the model is still working. */
 const LATENCY_HINT_MS = 900
 const DUPLICATE_UTTERANCE_MS = 900
@@ -103,8 +105,14 @@ export function LiveVoicePage({ onLeave }: Props) {
   const wasInterruptedRef = useRef(false)
   const activeTurnRef = useRef(0)
   const fillerTimerRef = useRef<number | null>(null)
-  /** When false, mic audio is ignored until the user taps the orb. */
+  /** When false, mic is paused while AI thinks or speaks. */
   const acceptingInputRef = useRef(true)
+  const [acceptingInput, setAcceptingInput] = useState(true)
+
+  const setAccepting = useCallback((value: boolean) => {
+    acceptingInputRef.current = value
+    setAcceptingInput(value)
+  }, [])
 
   const clearFillerTimer = useCallback(() => {
     if (fillerTimerRef.current !== null) {
@@ -135,10 +143,14 @@ export function LiveVoicePage({ onLeave }: Props) {
     stopListening,
     pauseCapture,
     resumeCapture,
+    flushUtterance,
   } = useVoiceInput({
+      silenceMs: UTTERANCE_SILENCE_MS,
       onSpeechStart: () => {
         lastActivityAtRef.current = Date.now()
-        setStatusDetail("I'm listening...")
+        if (acceptingInputRef.current) {
+          setStatusDetail('Recording… pause 3s or tap orb to send')
+        }
       },
       onActivity: () => {
         lastActivityAtRef.current = Date.now()
@@ -169,7 +181,7 @@ export function LiveVoicePage({ onLeave }: Props) {
     ) => {
       if (!voiceId) {
         setStickyStatus('No cloned voice — complete Voice Train to hear replies in your voice.')
-        acceptingInputRef.current = true
+        setAccepting(true)
         resumeCapture()
         return
       }
@@ -188,13 +200,13 @@ export function LiveVoicePage({ onLeave }: Props) {
         setStickyStatus(msg)
       } finally {
         if (!sessionActiveRef.current || activeTurnRef.current !== turnId) return
-        acceptingInputRef.current = true
+        setAccepting(true)
         resumeCapture()
-        setStatusDetail("I'm listening...")
+        setStatusDetail('Ask your next question… pause 3s or tap orb when done')
         lastActivityAtRef.current = Date.now()
       }
     },
-    [pauseCapture, resumeCapture, setStickyStatus, speak, voiceId],
+    [pauseCapture, resumeCapture, setAccepting, setStickyStatus, speak, voiceId],
   )
 
   const handleOrbInterrupt = useCallback(() => {
@@ -206,11 +218,23 @@ export function LiveVoicePage({ onLeave }: Props) {
     clearFillerTimer()
     stopSpeaking()
     isProcessingRef.current = false
-    acceptingInputRef.current = true
-    setStatusDetail("I'm listening...")
+    setAccepting(true)
+    setStatusDetail('Recording… pause 3s or tap orb to send')
     resumeCapture()
     lastActivityAtRef.current = Date.now()
-  }, [clearFillerTimer, resumeCapture, stopSpeaking])
+  }, [clearFillerTimer, resumeCapture, setAccepting, stopSpeaking])
+
+  const handleOrbPress = useCallback(() => {
+    if (!sessionActiveRef.current) return
+    if (isSpeakingRef.current || isProcessingRef.current) {
+      handleOrbInterrupt()
+      return
+    }
+    if (acceptingInputRef.current) {
+      setStickyStatus('Sending your question…', 2000)
+      flushUtterance()
+    }
+  }, [flushUtterance, handleOrbInterrupt, setStickyStatus])
 
   const handleTranscript = useCallback(
     async (finalText: string) => {
@@ -233,7 +257,7 @@ export function LiveVoicePage({ onLeave }: Props) {
 
       if (wasInterruptedRef.current && isBackchannel(trimmed)) {
         wasInterruptedRef.current = false
-        setStatusDetail("I'm listening...")
+        setStatusDetail('Ask your next question… pause 3s or tap orb when done')
         resumeCapture()
         return
       }
@@ -245,7 +269,7 @@ export function LiveVoicePage({ onLeave }: Props) {
       const turnId = ++activeTurnRef.current
       clearFillerTimer()
       wasInterruptedRef.current = false
-      acceptingInputRef.current = false
+      setAccepting(false)
       pauseCapture()
 
       setLastUserCaption(trimmed)
@@ -268,9 +292,9 @@ export function LiveVoicePage({ onLeave }: Props) {
 
         if (!sessionActiveRef.current || activeTurnRef.current !== turnId) return
         if (!turn) {
-          acceptingInputRef.current = true
+          setAccepting(true)
           resumeCapture()
-          setStatusDetail("I'm listening...")
+          setStatusDetail('Ask your next question… pause 3s or tap orb when done')
           return
         }
 
@@ -286,38 +310,20 @@ export function LiveVoicePage({ onLeave }: Props) {
         }
       }
     },
-    [clearFillerTimer, pauseCapture, processUserTurn, resumeCapture, speakReply],
+    [clearFillerTimer, pauseCapture, processUserTurn, resumeCapture, setAccepting, speakReply],
   )
 
   useEffect(() => {
     handleTranscriptRef.current = handleTranscript
   }, [handleTranscript])
 
-  // "May I help you?" prompt after 2s of silence, auto-close after long silence
-  const askedHelpRef = useRef(false)
+  // Auto-close after long session silence (between questions)
   useEffect(() => {
     if (!isSessionActive) return
-    askedHelpRef.current = false
     const timer = window.setInterval(() => {
       if (!isSessionActive || state.isProcessing || isSpeaking) return
       const silent = Date.now() - lastActivityAtRef.current
 
-      // After 5s with no activity, ask once (live should not nag early)
-      if (silent >= 5000 && !askedHelpRef.current && isListening) {
-        askedHelpRef.current = true
-        const sessionId = sessionIdRef.current
-        stopListening()
-        void speak({ text: 'May I help you?', emotion: 'neutral', voiceId })
-          .then(() => {
-            if (!sessionActiveRef.current || sessionIdRef.current !== sessionId) return
-            lastActivityAtRef.current = Date.now()
-            askedHelpRef.current = false
-            return startListening()
-          })
-          .catch(() => {})
-      }
-
-      // Auto-close after long silence
       if (silent >= SILENCE_AUTO_CLOSE_MS) {
         sessionIdRef.current += 1
         sessionActiveRef.current = false
@@ -330,7 +336,7 @@ export function LiveVoicePage({ onLeave }: Props) {
       }
     }, 500)
     return () => window.clearInterval(timer)
-  }, [isListening, isSessionActive, isSpeaking, setStickyStatus, speak, startListening, state.isProcessing, stopListening, stopSpeaking, voiceId])
+  }, [isSessionActive, isSpeaking, setStickyStatus, state.isProcessing, stopListening, stopSpeaking])
 
   // Start session on mount
   useEffect(() => {
@@ -339,12 +345,12 @@ export function LiveVoicePage({ onLeave }: Props) {
     setIsSessionActive(true)
     sessionIdRef.current += 1
     const sessionId = sessionIdRef.current
-    acceptingInputRef.current = true
+    setAccepting(true)
     lastActivityAtRef.current = Date.now()
     lastHandledTranscriptRef.current = { text: '', at: 0 }
     silentCaptureCountRef.current = 0
     setLatestReply(GREETING_DISPLAY)
-    setStatusDetail("I'm listening...")
+    setStatusDetail('Ask your first question… pause 3s or tap orb when done')
 
     void (async () => {
       await startListening()
@@ -381,33 +387,44 @@ export function LiveVoicePage({ onLeave }: Props) {
     sessionIdRef.current += 1
     sessionActiveRef.current = true
     setIsSessionActive(true)
-    acceptingInputRef.current = true
+    setAccepting(true)
     lastActivityAtRef.current = Date.now()
     lastHandledTranscriptRef.current = { text: '', at: 0 }
     silentCaptureCountRef.current = 0
     setLatestReply(GREETING_DISPLAY)
     const sessionId = sessionIdRef.current
     void (async () => {
-      setStatusDetail("I'm listening...")
+      setStatusDetail('Ask your first question… pause 3s or tap orb when done')
       await startListening()
       if (!sessionActiveRef.current || sessionIdRef.current !== sessionId) return
       void speak({ text: GREETING_TEXT, emotion: 'neutral', voiceId }).catch(() => {})
     })()
-  }, [speak, startListening, voiceId])
+  }, [setAccepting, speak, startListening, voiceId])
 
   // Status auto-update (respects sticky messages)
   useEffect(() => {
     if (Date.now() < stickyStatusUntilRef.current) return
     if (!isSessionActive) return
-    if (state.isProcessing) setStatusDetail('Thinking...')
-    else if (isSpeaking) setStatusDetail('Speaking...')
-    else if (isListening) setStatusDetail("I'm listening...")
-    else if (!isListening && !isSpeaking && !state.isProcessing) setStatusDetail('Here with you.')
-  }, [isListening, isSessionActive, isSpeaking, state.isProcessing])
+    if (state.isProcessing) setStatusDetail('Thinking about your question…')
+    else if (isSpeaking) setStatusDetail('Answering…')
+    else if (isListening && acceptingInput) {
+      setStatusDetail('Recording… pause 3s or tap orb to send')
+    } else if (!isListening && !isSpeaking && !state.isProcessing) {
+      setStatusDetail('Here with you.')
+    }
+  }, [acceptingInput, isListening, isSessionActive, isSpeaking, state.isProcessing])
 
   const combinedLevel = useMemo(() => Math.max(inputLevel * 0.9, outputLevel), [inputLevel, outputLevel])
 
-  const canInterrupt = isSessionActive && (isSpeaking || state.isProcessing)
+  const questionCount = useMemo(
+    () => state.conversationHistory.filter((m) => m.role === 'user').length,
+    [state.conversationHistory],
+  )
+  const nextQuestionNum = questionCount + 1
+
+  const canOrbPress =
+    isSessionActive &&
+    (isSpeaking || state.isProcessing || (isListening && acceptingInput))
 
   const orbState: OrbState = useMemo(() => {
     if (isSpeaking) return 'speaking'
@@ -462,24 +479,34 @@ export function LiveVoicePage({ onLeave }: Props) {
           <Radio size={14} className="text-accent" />
           Live Voice
         </span>
-        <span className="text-xs text-text-tertiary">{state.conversationHistory.length} turns</span>
+        <span className="text-xs text-text-tertiary">
+          {acceptingInput && isListening && !isSpeaking && !state.isProcessing
+            ? `Question ${nextQuestionNum}`
+            : `${questionCount} answered`}
+        </span>
       </div>
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(360px,520px)_minmax(0,1fr)]">
       {/* Orb card */}
       <div className="rounded-2xl border border-border bg-gradient-to-b from-surface-card to-elevated p-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)] sm:p-4">
-        {/* Orb — tap to interrupt while AI is speaking */}
+        {/* Orb — tap to send while recording, or interrupt while AI responds */}
         <div className="flex items-center justify-center">
           <motion.button
             type="button"
-            aria-label={canInterrupt ? 'Tap to interrupt' : orbState}
-            onClick={canInterrupt ? handleOrbInterrupt : undefined}
+            aria-label={
+              isSpeaking || state.isProcessing
+                ? 'Tap to interrupt'
+                : acceptingInput
+                  ? 'Tap to send question'
+                  : orbState
+            }
+            onClick={canOrbPress ? handleOrbPress : undefined}
             className={`relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
-              canInterrupt ? 'cursor-pointer' : 'cursor-default'
+              canOrbPress ? 'cursor-pointer' : 'cursor-default'
             }`}
-            whileTap={canInterrupt ? { scale: 0.94 } : {}}
+            whileTap={canOrbPress ? { scale: 0.94 } : {}}
           >
-            {canInterrupt && (
+            {canOrbPress && (
               <span
                 aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-full border-2 border-accent/50 shadow-[0_0_20px] shadow-accent/30"
@@ -489,14 +516,16 @@ export function LiveVoicePage({ onLeave }: Props) {
           </motion.button>
         </div>
 
-        {canInterrupt && (
+        {canOrbPress && (
           <motion.p
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             className="mt-2 text-center text-xs text-accent"
           >
             <Hand size={11} className="mr-1 inline" />
-            Tap orb to interrupt
+            {isSpeaking || state.isProcessing
+              ? 'Tap orb to interrupt'
+              : 'Pause 3s or tap orb to send'}
           </motion.p>
         )}
 
@@ -525,7 +554,9 @@ export function LiveVoicePage({ onLeave }: Props) {
                     : 'border-border bg-elevated'
                 }`}
               >
-                You: {lastUserCaption}
+                <span className="text-xs font-medium text-text-tertiary">Your question</span>
+                <br />
+                {lastUserCaption}
               </p>
             )}
             {latestReply && (
@@ -534,13 +565,15 @@ export function LiveVoicePage({ onLeave }: Props) {
                   isSpeaking ? 'border-accent/60 bg-accent-soft' : 'border-border bg-assistant-bubble'
                 }`}
               >
+                <span className="text-xs font-medium text-text-tertiary">Answer</span>
+                <br />
                 {latestReply}
               </p>
             )}
           </motion.div>
         ) : (
           <p className="mt-2 rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-tertiary">
-            Start speaking and captions will appear here.
+            Ask one question at a time — mic stays on until you pause 3 seconds or tap the orb.
           </p>
         )}
         {state.lastError && (
