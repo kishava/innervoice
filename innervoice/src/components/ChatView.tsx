@@ -6,7 +6,6 @@ import { FollowUpSuggestions } from './FollowUpSuggestions'
 import { VoiceInput } from './VoiceInput'
 import { useAudioVisualizer } from '../hooks/useAudioVisualizer'
 import { BreathingVoiceOrb } from './BreathingVoiceOrb'
-import { RainbowMorphEmbed } from './RainbowMorphEmbed'
 
 interface Props {
   messages: Message[]
@@ -64,46 +63,25 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
 
   if (isLanding) {
     return (
-      <div className="relative flex h-full min-h-0 flex-col overflow-y-auto">
+      <div className="relative flex h-full min-h-0 flex-col">
         <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-40 bg-[radial-gradient(circle_at_center,rgb(127_157_255_/_0.4),transparent_68%)] blur-2xl lg:block" />
         <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-40 bg-[radial-gradient(circle_at_center,rgb(127_157_255_/_0.4),transparent_68%)] blur-2xl lg:block" />
 
-        <section className="mx-auto w-full max-w-5xl shrink-0 px-2 pt-2 sm:pt-4">
-          <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-surface-card/40 shadow-[0_20px_60px_rgb(0_0_0_/_0.18)] backdrop-blur-sm dark:shadow-[0_24px_70px_rgb(0_0_0_/_0.45)]">
-            <RainbowMorphEmbed className="aspect-[4/3] w-full sm:aspect-[21/9] sm:min-h-[220px] md:min-h-[260px]" />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface/95 via-surface/25 to-transparent dark:from-[#080b14]/95 dark:via-[#080b14]/20" />
-            <motion.div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-5 pt-16 text-center sm:px-8 sm:pb-7">
-              <motion.h1
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15, duration: 0.5 }}
-                className="text-2xl font-semibold tracking-tight text-text-primary drop-shadow-sm sm:text-4xl md:text-5xl"
-              >
-                Your Future Self is Here.
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25, duration: 0.5 }}
-                className="mx-auto mt-2 max-w-2xl text-sm text-text-secondary sm:text-base"
-              >
-                InnerVoice is your personal conversational self-discovery AI — meet yourself in living color.
-              </motion.p>
-              <motion.button
-                type="button"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35, duration: 0.45 }}
-                onClick={() => inputRef.current?.focus()}
-                className="pointer-events-auto mt-4 rounded-full border border-accent/50 bg-elevated/90 px-5 py-2.5 text-sm font-medium text-text-primary shadow-[0_0_28px_var(--color-accent-soft)] backdrop-blur-md transition hover:border-accent hover:scale-[1.02] active:scale-[0.98]"
-              >
-                Connect with Your Future Self
-              </motion.button>
-            </motion.div>
-          </div>
+        <section className="mx-auto w-full max-w-4xl px-2 pt-4 text-center sm:pt-6">
+          <h1 className="text-3xl font-semibold tracking-tight text-text-primary sm:text-5xl">Your Future Self is Here.</h1>
+          <p className="mx-auto mt-2 max-w-2xl text-sm text-text-secondary sm:text-base">
+            InnerVoice is your personal conversational self-discovery AI.
+          </p>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.focus()}
+            className="mt-4 rounded-full border border-accent/40 bg-elevated/80 px-5 py-2 text-sm font-medium text-text-primary shadow-[0_0_24px_var(--color-accent-soft)] transition hover:border-accent/60"
+          >
+            Connect with Your Future Self
+          </button>
         </section>
 
-        <section className="mx-auto mt-3 flex w-full max-w-4xl flex-1 min-h-0 flex-col rounded-2xl border border-border/80 bg-elevated/55 p-3 backdrop-blur-xl sm:mt-4 sm:p-4">
+        <section className="mx-auto mt-4 flex w-full max-w-4xl flex-1 min-h-0 flex-col rounded-2xl border border-border/80 bg-elevated/55 p-3 backdrop-blur-xl sm:p-4">
           <div className="grid gap-2 rounded-xl border border-border/70 bg-surface-card/25 p-2.5 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3">
             <div>
               <p className="text-sm leading-snug text-text-secondary">
