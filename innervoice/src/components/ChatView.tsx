@@ -114,14 +114,14 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
           </div>
 
           <div className="mt-2 rounded-xl border border-border/70 bg-input-bg/65 p-2.5">
-            <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
+            <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2">
               <button
                 type="button"
                 aria-label="Open question suggestions"
                 onClick={() => setSuggestionsOpen(true)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-elevated text-text-secondary transition hover:border-accent/60 hover:text-text-primary"
+                className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full border border-border bg-elevated text-text-secondary transition hover:border-accent/60 hover:text-text-primary sm:h-12 sm:w-12"
               >
-                <Lightbulb size={16} />
+                <Lightbulb size={18} />
               </button>
               <VoiceInput
                 disabled={isProcessing || assistantSpeaking}
@@ -156,9 +156,9 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
                 aria-label="Send message"
                 onClick={send}
                 disabled={!canSend}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-accent/45 bg-accent-soft text-text-primary transition hover:scale-[1.03] disabled:opacity-50"
+                className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full border border-accent/45 bg-accent-soft text-text-primary transition hover:scale-[1.03] disabled:opacity-50 sm:h-12 sm:w-12"
               >
-                <Send size={16} />
+                <Send size={18} />
               </button>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3">
@@ -223,12 +223,12 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
         )}
       </div>
 
-      <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-end gap-2">
+      <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2">
         <button
           type="button"
           aria-label="Open question suggestions"
           onClick={() => setSuggestionsOpen(true)}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-elevated text-text-secondary transition hover:border-accent/60 hover:text-text-primary sm:h-12 sm:w-12"
+          className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full border border-border bg-elevated text-text-secondary transition hover:border-accent/60 hover:text-text-primary sm:h-12 sm:w-12"
         >
           <Lightbulb size={18} />
         </button>
@@ -266,7 +266,7 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
           aria-label="Send message"
           onClick={send}
           disabled={!canSend}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-white shadow-[0_0_20px_var(--color-accent-soft)] transition hover:scale-[1.03] disabled:opacity-50 sm:h-12 sm:w-12"
+          className="flex h-11 w-11 shrink-0 items-center justify-center self-center rounded-full bg-accent text-white shadow-[0_0_20px_var(--color-accent-soft)] transition hover:scale-[1.03] disabled:opacity-50 sm:h-12 sm:w-12"
         >
           <Send size={18} />
         </button>

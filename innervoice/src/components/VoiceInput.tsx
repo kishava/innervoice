@@ -105,7 +105,7 @@ export function VoiceInput({ onTranscript, disabled = false }: Props) {
   const isTranscribing = status === 'transcribing'
 
   return (
-    <div className="relative flex shrink-0 items-center justify-center">
+    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center self-center sm:h-12 sm:w-12">
       {error && (
         <p className="pointer-events-none absolute -top-14 left-1/2 z-20 w-[min(280px,80vw)] -translate-x-1/2 rounded-lg border border-danger/40 bg-danger-soft px-3 py-1.5 text-center text-xs text-danger">
           {error}
