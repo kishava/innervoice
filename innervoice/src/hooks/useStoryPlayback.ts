@@ -10,7 +10,10 @@ interface StartOptions {
   emotion: Emotion
 }
 
-export function useStoryPlayback(voiceId: string | null) {
+export function useStoryPlayback(
+  voiceId: string | null,
+  connectAudio?: (audio: HTMLAudioElement) => void,
+) {
   const [status, setStatus] = useState<StoryPlaybackStatus>('idle')
   const [chunks, setChunks] = useState<string[]>([])
   const [chunkIndex, setChunkIndex] = useState(0)
@@ -90,6 +93,7 @@ export function useStoryPlayback(voiceId: string | null) {
         blobUrlRef.current = url
         const audio = new Audio(url)
         audioRef.current = audio
+        connectAudio?.(audio)
 
         audio.onended = () => {
           clearAudio()
@@ -102,7 +106,7 @@ export function useStoryPlayback(voiceId: string | null) {
 
         void audio.play().catch(reject)
       }),
-    [clearAudio],
+    [clearAudio, connectAudio],
   )
 
   const waitWhilePaused = useCallback(async (runId: number) => {

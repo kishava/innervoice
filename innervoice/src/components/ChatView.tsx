@@ -4,7 +4,7 @@ import { BookOpen, Lightbulb, Pause, Play, Send } from 'lucide-react'
 import type { Message } from '../types'
 import { FollowUpSuggestions } from './FollowUpSuggestions'
 import { VoiceInput } from './VoiceInput'
-import { useAudioVisualizer } from '../hooks/useAudioVisualizer'
+import { useAudioOrb } from '../contexts/AudioOrbContext'
 import { BreathingVoiceOrb } from './BreathingVoiceOrb'
 
 interface Props {
@@ -37,7 +37,7 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
   const logRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
-  const { levels, connect } = useAudioVisualizer()
+  const { levels, connect, setOrbState } = useAudioOrb()
   const maxChars = 1000
   const remaining = maxChars - input.length
   const lastAssistantMessageId = useMemo(
@@ -50,6 +50,12 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
       logRef.current.scrollTop = logRef.current.scrollHeight
     }
   }, [messages, isProcessing, thinkingLabel])
+
+  useEffect(() => {
+    if (isProcessing) setOrbState('processing')
+    else if (assistantSpeaking) setOrbState('speaking')
+    else setOrbState('idle')
+  }, [assistantSpeaking, isProcessing, setOrbState])
 
   const canSend = useMemo(() => input.trim().length > 0 && !isProcessing, [input, isProcessing])
   const isLanding = messages.length === 0 && !isProcessing

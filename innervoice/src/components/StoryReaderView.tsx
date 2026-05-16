@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
 import { BookOpen, Pause, Play, Square, Upload } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { BreathingVoiceOrb, type OrbEmotion } from './BreathingVoiceOrb'
+import { useAudioOrb } from '../contexts/AudioOrbContext'
 import { useStoryPlayback } from '../hooks/useStoryPlayback'
 import { readScriptFile, STORY_SCRIPT_MAX_CHARS, splitStoryIntoChunks } from '../lib/storyChunks'
 import type { Emotion } from '../types'
@@ -50,7 +51,18 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
   const [uploadName, setUploadName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const { status, chunks, chunkIndex, error, isActive, start, stop, pause, resume } = useStoryPlayback(voiceId)
+  const { connect, setOrbState } = useAudioOrb()
+  const { status, chunks, chunkIndex, error, isActive, start, stop, pause, resume } = useStoryPlayback(
+    voiceId,
+    connect,
+  )
+
+  useEffect(() => {
+    if (status === 'preparing') setOrbState('processing')
+    else if (status === 'playing') setOrbState('speaking')
+    else if (status === 'paused') setOrbState('listening')
+    else setOrbState('idle')
+  }, [setOrbState, status])
 
   const previewChunks = useMemo(() => splitStoryIntoChunks(script), [script])
   const charCount = script.length

@@ -15,6 +15,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from '../AuthContext'
 import { ProfileAvatar } from './ProfileAvatar'
 import { ThemeToggle } from './ThemeToggle'
+import { NavbarOrb } from './NavbarOrb'
 import type { AppStep } from '../types'
 
 interface Props {
@@ -101,9 +102,11 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
   }, [])
 
   return (
-    <nav className="glass-panel sticky top-2 z-30 mb-2 rounded-3xl border border-border/80 px-3 py-2.5 shadow-[0_10px_30px_rgb(0_0_0_/_0.22)] sm:mb-3 sm:px-4">
-      <motion.div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
+    <div className="relative z-30 mb-2 sm:mb-3">
+      <NavbarOrb />
+      <nav className="glass-panel sticky top-2 rounded-3xl border border-border/80 px-3 pb-2.5 pt-7 shadow-[0_10px_30px_rgb(0_0_0_/_0.22)] sm:px-4 sm:pt-8">
+        <motion.div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 justify-self-start">
           {isAuthenticated && user ? (
             <button
               type="button"
@@ -124,7 +127,9 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-1.5">
+        <motion.div className="min-w-[3.5rem] justify-self-center sm:min-w-[4.25rem]" aria-hidden />
+
+        <div className="col-start-3 flex items-center justify-end gap-1.5 justify-self-end">
           <div className="hidden items-center gap-1.5 sm:flex">
             {!isAuthenticated && (
               <NavButton
@@ -232,10 +237,12 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
             </button>
           </div>
         </div>
-      </motion.div>
+        </motion.div>
+      </nav>
 
       {mobileMenuOpen && (
-        <div className="mt-3 flex flex-col gap-2 border-t border-border/80 pt-3 sm:hidden">
+        <div className="glass-panel mt-2 rounded-3xl border border-border/80 px-3 py-3 sm:hidden">
+        <div className="flex flex-col gap-2">
           {!isAuthenticated && (
             <NavButton
               label="Register"
@@ -298,7 +305,8 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
             <ThemeToggle />
           </div>
         </div>
+        </div>
       )}
-    </nav>
+    </div>
   )
 }
