@@ -537,7 +537,7 @@ export function LiveVoicePage({ onLeave }: Props) {
                 {latestReply}
               </p>
             )}
-          </div>
+          </motion.div>
         ) : (
           <p className="mt-2 rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-text-tertiary">
             Start speaking and captions will appear here.
