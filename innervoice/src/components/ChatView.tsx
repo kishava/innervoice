@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { BookOpen, Lightbulb, Pause, Play, Send } from 'lucide-react'
 import type { Message } from '../types'
@@ -35,6 +35,7 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(true)
   const [assistantSpeaking, setAssistantSpeaking] = useState(false)
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [voiceRecording, setVoiceRecording] = useState(false)
   const logRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const { levels, connect, setOrbState } = useAudioOrb()
@@ -54,8 +55,22 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
   useEffect(() => {
     if (isProcessing) setOrbState('processing')
     else if (assistantSpeaking) setOrbState('speaking')
+    else if (voiceRecording) setOrbState('listening')
     else setOrbState('idle')
-  }, [assistantSpeaking, isProcessing, setOrbState])
+  }, [assistantSpeaking, isProcessing, setOrbState, voiceRecording])
+
+  const voiceDisabled = isProcessing || assistantSpeaking
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      if (!text.trim()) return
+      if (voiceModeEnabled && !voiceDisabled) {
+        onSend(text)
+        return
+      }
+      setInput((prev) => (prev ? `${prev} ${text}` : text).trim())
+    },
+    [onSend, voiceDisabled, voiceModeEnabled],
+  )
 
   const canSend = useMemo(() => input.trim().length > 0 && !isProcessing, [input, isProcessing])
   const isLanding = messages.length === 0 && !isProcessing
@@ -91,7 +106,7 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
           <div className="grid gap-2 rounded-xl border border-border/70 bg-surface-card/25 p-2.5 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3">
             <div>
               <p className="text-sm leading-snug text-text-secondary">
-                Tap to talk, let your voice clone guide you. Open the lightbulb for ideas.
+                Hold Space or tap the mic to talk. Open the lightbulb for ideas.
               </p>
               <motion.div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center rounded-full border border-accent/35 px-2.5 py-1 text-xs text-text-primary">
@@ -130,15 +145,10 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
                 <Lightbulb size={18} />
               </button>
               <VoiceInput
-                disabled={isProcessing || assistantSpeaking}
-                onTranscript={(text) => {
-                  if (!text.trim()) return
-                  if (voiceModeEnabled && !isProcessing && !assistantSpeaking) {
-                    onSend(text)
-                    return
-                  }
-                  setInput((prev) => (prev ? `${prev} ${text}` : text).trim())
-                }}
+                disabled={voiceDisabled}
+                hotkeyDisabled={suggestionsOpen}
+                onStatusChange={(s) => setVoiceRecording(s === 'recording')}
+                onTranscript={handleVoiceTranscript}
               />
               <div className="min-w-0 flex-1">
                 <textarea
@@ -239,15 +249,10 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
           <Lightbulb size={18} />
         </button>
         <VoiceInput
-          disabled={isProcessing || assistantSpeaking}
-          onTranscript={(text) => {
-            if (!text.trim()) return
-            if (voiceModeEnabled && !isProcessing && !assistantSpeaking) {
-              onSend(text)
-              return
-            }
-            setInput((prev) => (prev ? `${prev} ${text}` : text).trim())
-          }}
+          disabled={voiceDisabled}
+          hotkeyDisabled={suggestionsOpen}
+          onStatusChange={(s) => setVoiceRecording(s === 'recording')}
+          onTranscript={handleVoiceTranscript}
         />
         <div className="min-w-0 flex-1">
           <textarea
@@ -279,7 +284,9 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
       </div>
 
       <div className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-elevated/85 px-3 py-2">
-        <p className="text-xs text-text-secondary">{voiceModeEnabled ? 'Voice mode is ON' : 'Voice mode is OFF'}</p>
+        <p className="text-xs text-text-secondary">
+          {voiceModeEnabled ? 'Voice mode ON — hold Space to talk' : 'Voice mode OFF — hold Space fills the text box'}
+        </p>
         <button
           type="button"
           onClick={() => setVoiceModeEnabled((prev) => !prev)}
