@@ -13,6 +13,7 @@ import { Navbar } from './components/Navbar'
 import { ProfilePanel } from './components/ProfilePanel'
 import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { RecordingView } from './components/RecordingView'
+import { StoryReaderView } from './components/StoryReaderView'
 import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
 
@@ -379,7 +380,11 @@ export default function App() {
               showThinking={showThinking}
               thinkingLabel={thinkingLabel}
               onSend={handleSendMessage}
+              onOpenStory={() => navigate('story')}
             />
+          )}
+          {step === 'story' && (
+            <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
           )}
         </motion.section>
 

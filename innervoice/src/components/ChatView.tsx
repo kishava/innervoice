@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Lightbulb, Pause, Play, Send } from 'lucide-react'
+import { BookOpen, Lightbulb, Pause, Play, Send } from 'lucide-react'
 import type { Message } from '../types'
 import { FollowUpSuggestions } from './FollowUpSuggestions'
 import { VoiceInput } from './VoiceInput'
@@ -13,6 +13,7 @@ interface Props {
   showThinking: boolean
   thinkingLabel: string
   onSend: (text: string) => void
+  onOpenStory?: () => void
 }
 
 function VisualBars({ levels }: { levels: number[] }) {
@@ -29,7 +30,7 @@ function VisualBars({ levels }: { levels: number[] }) {
   )
 }
 
-export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, onSend }: Props) {
+export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, onSend, onOpenStory }: Props) {
   const [input, setInput] = useState('')
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(true)
   const [assistantSpeaking, setAssistantSpeaking] = useState(false)
@@ -86,9 +87,21 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
               <p className="text-sm leading-snug text-text-secondary">
                 Tap to talk, let your voice clone guide you. Open the lightbulb for ideas.
               </p>
-              <div className="mt-2 inline-flex items-center rounded-full border border-accent/35 px-2.5 py-1 text-xs text-text-primary">
-                Voice mode: <span className="ml-1 text-accent">{voiceModeEnabled ? 'ON' : 'OFF'}</span>
-              </div>
+              <motion.div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full border border-accent/35 px-2.5 py-1 text-xs text-text-primary">
+                  Voice mode: <span className="ml-1 text-accent">{voiceModeEnabled ? 'ON' : 'OFF'}</span>
+                </span>
+                {onOpenStory && (
+                  <button
+                    type="button"
+                    onClick={onOpenStory}
+                    className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs text-text-secondary transition hover:border-accent/60 hover:text-text-primary"
+                  >
+                    <BookOpen size={12} />
+                    Read a script
+                  </button>
+                )}
+              </motion.div>
             </div>
             <div className="mx-auto rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_26px_var(--color-accent-soft)]">
               <BreathingVoiceOrb

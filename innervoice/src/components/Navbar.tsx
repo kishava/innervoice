@@ -4,6 +4,7 @@ import {
   Clock,
   LogOut,
   Menu,
+  BookOpen,
   MessageCircle,
   Mic2,
   User,
@@ -142,6 +143,13 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                   active={step === 'chat'}
                   disabled={!user?.voiceId}
                 />
+                <NavButton
+                  label="Story"
+                  icon={<BookOpen size={14} />}
+                  onClick={() => go('story')}
+                  active={step === 'story'}
+                  disabled={!user?.voiceId}
+                />
                 <motion.div ref={optionsRef} className="relative">
                   <button
                     type="button"
@@ -243,6 +251,13 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                 icon={<MessageCircle size={14} />}
                 onClick={() => go('chat')}
                 active={step === 'chat'}
+                disabled={!user?.voiceId}
+              />
+              <NavButton
+                label="Story"
+                icon={<BookOpen size={14} />}
+                onClick={() => go('story')}
+                active={step === 'story'}
                 disabled={!user?.voiceId}
               />
               <div className="rounded-2xl border border-border/80 bg-elevated/80 p-2">
