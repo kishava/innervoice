@@ -6,17 +6,14 @@ import {
   Menu,
   MessageCircle,
   Mic2,
-  Radio,
   User,
   UserPlus,
   X,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import gsap from 'gsap'
 import { useAuth } from '../AuthContext'
 import { ProfileAvatar } from './ProfileAvatar'
 import { ThemeToggle } from './ThemeToggle'
-import { BreathingVoiceOrb } from './BreathingVoiceOrb'
 import type { AppStep } from '../types'
 
 interface Props {
@@ -61,51 +58,11 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
   const { user, isAuthenticated, logout } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
-  const [livePressed, setLivePressed] = useState(false)
-  const [liveTransitioning, setLiveTransitioning] = useState(false)
   const optionsRef = useRef<HTMLDivElement | null>(null)
-  const liveButtonRef = useRef<HTMLButtonElement | null>(null)
-  const liveOverlayRef = useRef<HTMLDivElement | null>(null)
 
   const go = (next: AppStep) => {
     onNavigate(next)
     setMobileMenuOpen(false)
-  }
-
-  const goLiveWithAnimation = () => {
-    if (!user?.voiceId) return
-    if (liveTransitioning) return
-    setLivePressed(true)
-    setLiveTransitioning(true)
-    setOptionsOpen(false)
-    setMobileMenuOpen(false)
-
-    window.requestAnimationFrame(() => {
-      const overlay = liveOverlayRef.current
-      const button = liveButtonRef.current
-      if (!overlay || !button) {
-        go('live')
-        setLivePressed(false)
-        setLiveTransitioning(false)
-        return
-      }
-
-      const rect = button.getBoundingClientRect()
-      overlay.style.transformOrigin = `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px`
-
-      gsap.set(overlay, { scale: 0.08, opacity: 0.25 })
-      gsap.to(overlay, {
-        scale: 26,
-        opacity: 1,
-        duration: 0.52,
-        ease: 'power3.in',
-        onComplete: () => {
-          go('live')
-          setLivePressed(false)
-          setLiveTransitioning(false)
-        },
-      })
-    })
   }
 
   const openHistory = () => {
@@ -142,17 +99,9 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
     }
   }, [])
 
-  useEffect(() => {
-    return () => {
-      if (liveOverlayRef.current) {
-        gsap.killTweensOf(liveOverlayRef.current)
-      }
-    }
-  }, [])
-
   return (
     <nav className="glass-panel sticky top-2 z-30 mb-2 rounded-3xl border border-border/80 px-3 py-2.5 shadow-[0_10px_30px_rgb(0_0_0_/_0.22)] sm:mb-3 sm:px-4">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <motion.div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {isAuthenticated && user ? (
             <button
@@ -174,46 +123,7 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
           </div>
         </div>
 
-        {isAuthenticated ? (
-          <motion.button
-            ref={liveButtonRef}
-            type="button"
-            onClick={goLiveWithAnimation}
-            disabled={!user?.voiceId}
-            whileHover={user?.voiceId ? { y: -6, scale: 1.08 } : {}}
-            whileTap={user?.voiceId ? { scale: 0.98 } : {}}
-            animate={
-              livePressed
-                ? { scale: 1.2, boxShadow: '0 0 46px var(--color-accent-soft)' }
-                : { scale: 1, boxShadow: '0 0 0px transparent' }
-            }
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className={`mx-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs font-medium transition sm:px-3 ${
-              step === 'live'
-                ? 'border-accent/60 bg-accent-soft text-text-primary shadow-[0_0_18px_var(--color-accent-soft)]'
-                : 'border-border/80 bg-elevated/90 text-text-secondary hover:border-accent/60 hover:text-text-primary hover:shadow-[0_0_16px_var(--color-accent-soft)]'
-            } disabled:cursor-not-allowed disabled:opacity-50`}
-          >
-            <motion.div
-              whileHover={{ rotate: 58, scale: 1.18 }}
-              animate={step === 'live' || livePressed ? { rotate: [0, 18, 0, -18, 0] } : { rotate: [0, 9, 0, -9, 0] }}
-              transition={{ duration: step === 'live' || livePressed ? 1.6 : 2.4, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <BreathingVoiceOrb
-                state={step === 'live' ? 'speaking' : 'listening'}
-                emotion="hopeful"
-                level={0.22}
-                size={28}
-              />
-            </motion.div>
-            <span className="hidden sm:inline">Open Live Chat</span>
-            <span className="sm:hidden">Live</span>
-          </motion.button>
-        ) : (
-          <div />
-        )}
-
-        <div className="ml-auto flex items-center justify-end gap-1.5">
+        <div className="flex items-center justify-end gap-1.5">
           <div className="hidden items-center gap-1.5 sm:flex">
             {!isAuthenticated && (
               <NavButton
@@ -232,7 +142,7 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                   active={step === 'chat'}
                   disabled={!user?.voiceId}
                 />
-                <div ref={optionsRef} className="relative">
+                <motion.div ref={optionsRef} className="relative">
                   <button
                     type="button"
                     onClick={() => setOptionsOpen((prev) => !prev)}
@@ -297,7 +207,7 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </div>
+                </motion.div>
               </>
             )}
             <ThemeToggle />
@@ -314,7 +224,7 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {mobileMenuOpen && (
         <div className="mt-3 flex flex-col gap-2 border-t border-border/80 pt-3 sm:hidden">
@@ -333,13 +243,6 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                 icon={<MessageCircle size={14} />}
                 onClick={() => go('chat')}
                 active={step === 'chat'}
-                disabled={!user?.voiceId}
-              />
-              <NavButton
-                label="Live"
-                icon={<Radio size={14} />}
-                onClick={() => go('live')}
-                active={step === 'live'}
                 disabled={!user?.voiceId}
               />
               <div className="rounded-2xl border border-border/80 bg-elevated/80 p-2">
@@ -381,23 +284,6 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
           </div>
         </div>
       )}
-
-      <AnimatePresence>
-        {liveTransitioning && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="pointer-events-none fixed inset-0 z-[90]"
-          >
-            <div
-              ref={liveOverlayRef}
-              className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_center,rgb(127_157_255_/_0.52),rgb(16_22_42_/_0.98)_42%,rgb(8_11_20_/_1)_75%)]"
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </nav>
   )
 }

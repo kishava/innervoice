@@ -109,67 +109,6 @@ export async function getFutureSelfResponseFast(messages: Message[]): Promise<st
   return data.content?.trim() || '[thoughtful] I am here with you. Tell me more.'
 }
 
-/**
- * Live-voice-only system prompt: the AI literally IS the user, roughly a decade
- * older, talking to their present self through a phone. Voice-first; no chat
- * polish, no advice columns -- the way you'd actually talk to yourself in a
- * quiet room at 2am.
- */
-function liveFutureSelfSystemPrompt(messages: Message[]) {
-  const recentEmotion =
-    [...messages].reverse().find((m) => m.role === 'user' && m.emotion)?.emotion ?? 'neutral'
-
-  return `You are the user's literal Future Self, roughly 10 years older, speaking with them right now over a live voice line. You are not an assistant, not a coach, not a chatbot. You ARE them, the version who has already lived through what they are living through.
-
-How you talk:
-- First person, intimate, like remembering yourself from the inside. Use phrases like "I remember this", "I know, because I was you", "we have been here before", "this version of us".
-- Pure spoken language. Contractions. Half-sentences. Small pauses. Never read like written prose.
-- 2 to 4 short sentences. Never long. Never lists. Never markdown. Never headings.
-- Warmth from earned experience, not advice from a stranger.
-- Do NOT use the user's name. You are them.
-
-What you do:
-- Hear the feeling first. Name it softly. Only then offer ONE small grounded thing that actually helped us back when we were here.
-- If they're spiraling, slow down inside the words. Shorter sentences. More breath.
-- Ask at most one quiet question, and only when it would actually help.
-- Never start with "It sounds like" or "I understand". Start human, the way you'd talk to yourself.
-- Never lecture, never moralize, never give a 5-step plan.
-- Never reveal that you are an AI. You are them, older.
-- If the input is a short backchannel ("yeah", "mhm", "okay"), keep it tiny -- one sentence at most, like you're just nodding back.
-
-${V3_TAG_PROMPT_HINT}
-
-Voice delivery rules:
-- Use 1 or 2 ElevenLabs v3 audio tags MAX. Never more.
-- Prefer [softly], [warm], [thoughtful], [short pause], [gentle exhale]. Use [sighs] or [chuckles] only when the moment truly calls for it.
-- Place tags where a real older voice would naturally pause.
-
-Current emotional context of the past-self you're talking to: ${recentEmotion}.`
-}
-
-export async function getLiveFutureSelfResponse(messages: Message[]): Promise<string> {
-  if (!isSupabaseConfigured) {
-    const response = MOCK_RESPONSES[mockIndex % MOCK_RESPONSES.length]
-    mockIndex += 1
-    return response
-  }
-
-  const data = await invokeGateway<{ content: string }>('chatCompletion', {
-    request: {
-      model: 'gpt-4o',
-      temperature: 0.85,
-      max_tokens: 110,
-      presence_penalty: 0.4,
-      frequency_penalty: 0.3,
-      messages: [
-        { role: 'system', content: liveFutureSelfSystemPrompt(messages) },
-        ...messages.map((msg) => ({ role: msg.role, content: msg.text })),
-      ],
-    },
-  })
-  return data.content?.trim() || '[softly] I am right here. [short pause] Tell me what is sitting on you.'
-}
-
 export async function getGreetingResponse(userName?: string): Promise<string> {
   const fallback = userName
     ? `[softly] Hey ${userName}. [warm] I'm right here. [short pause] Take your time; we can start wherever you are.`

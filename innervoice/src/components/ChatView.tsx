@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Lightbulb, Pause, Play, Radio, Send } from 'lucide-react'
+import { Lightbulb, Pause, Play, Send } from 'lucide-react'
 import type { Message } from '../types'
 import { FollowUpSuggestions } from './FollowUpSuggestions'
 import { VoiceInput } from './VoiceInput'
@@ -13,7 +13,6 @@ interface Props {
   showThinking: boolean
   thinkingLabel: string
   onSend: (text: string) => void
-  onOpenLive?: () => void
 }
 
 function VisualBars({ levels }: { levels: number[] }) {
@@ -30,7 +29,7 @@ function VisualBars({ levels }: { levels: number[] }) {
   )
 }
 
-export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, onSend, onOpenLive }: Props) {
+export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, onSend }: Props) {
   const [input, setInput] = useState('')
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(true)
   const [assistantSpeaking, setAssistantSpeaking] = useState(false)
@@ -82,7 +81,7 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
         </section>
 
         <section className="mx-auto mt-4 flex w-full max-w-4xl flex-1 min-h-0 flex-col rounded-2xl border border-border/80 bg-elevated/55 p-3 backdrop-blur-xl sm:p-4">
-          <div className="grid gap-2 rounded-xl border border-border/70 bg-surface-card/25 p-2.5 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-3">
+          <div className="grid gap-2 rounded-xl border border-border/70 bg-surface-card/25 p-2.5 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3">
             <div>
               <p className="text-sm leading-snug text-text-secondary">
                 Tap to talk, let your voice clone guide you. Open the lightbulb for ideas.
@@ -98,22 +97,6 @@ export function ChatView({ messages, isProcessing, showThinking, thinkingLabel, 
                 level={assistantSpeaking ? 0.9 : isProcessing ? 0.45 : 0.2}
                 size={100}
               />
-            </div>
-            <div className="rounded-xl border border-border/70 bg-elevated/80 p-2.5">
-              <p className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wide text-text-tertiary">
-                <Radio size={11} /> Live
-              </p>
-              <p className="text-lg font-semibold text-text-primary">Talk in Real-time</p>
-              <p className="text-xs text-text-secondary">(with 3D Voice Mode)</p>
-              {onOpenLive && (
-                <button
-                  type="button"
-                  onClick={onOpenLive}
-                  className="mt-2 rounded-full border border-accent/45 px-3 py-1 text-xs text-text-primary transition hover:border-accent/70"
-                >
-                  Open Live Chat
-                </button>
-              )}
             </div>
           </div>
 

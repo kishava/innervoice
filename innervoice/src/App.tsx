@@ -13,7 +13,6 @@ import { Navbar } from './components/Navbar'
 import { ProfilePanel } from './components/ProfilePanel'
 import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { RecordingView } from './components/RecordingView'
-import { LiveVoicePage } from './features/liveVoice/LiveVoicePage'
 import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
 
@@ -380,11 +379,7 @@ export default function App() {
               showThinking={showThinking}
               thinkingLabel={thinkingLabel}
               onSend={handleSendMessage}
-              onOpenLive={() => navigate('live')}
             />
-          )}
-          {step === 'live' && (
-            <LiveVoicePage onLeave={() => navigate('chat')} />
           )}
         </motion.section>
 
