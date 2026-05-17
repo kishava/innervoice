@@ -7,6 +7,7 @@ import { useAuth } from './AuthContext'
 import { defaultVoicesForMyVoicesPage, mergeVoicesForSelection } from './lib/defaultVoices'
 import { voiceLimitMessage } from './lib/voicePolicy'
 import { isSupabaseConfigured } from './lib/supabase'
+import { pickThinkingLabel, THINKING_LABELS } from './lib/thinkingLabels'
 import { useUserVoices } from './hooks/useUserVoices'
 import { VoicesView } from './components/VoicesView'
 import { AuthScreen } from './components/AuthScreen'
@@ -23,12 +24,7 @@ import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
 
 const ONBOARDED_KEY = 'innervoice-onboarded'
-const THINKING_LABELS = [
-  'Listening...',
-  'Taking that in...',
-  'Finding the right words...',
-  'Breathing with you for a second...',
-]
+
 const HEAVY_EMOTIONS = new Set<Emotion>(['anxious', 'sad', 'fearful', 'stressed', 'grieving', 'hurt', 'lonely'])
 
 function pickInitialStep(isAuthenticated: boolean): AppStep {
@@ -44,13 +40,6 @@ function wait(ms: number) {
 
 function randomBetween(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
-}
-
-function pickThinkingLabel(emotion?: Emotion) {
-  if (emotion && HEAVY_EMOTIONS.has(emotion)) {
-    return Math.random() > 0.5 ? 'Taking that in...' : 'Breathing with you for a second...'
-  }
-  return THINKING_LABELS[randomBetween(0, THINKING_LABELS.length - 1)]
 }
 
 function thinkingDelayForEmotion(emotion: Emotion) {
@@ -105,7 +94,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [showThinking, setShowThinking] = useState(false)
-  const [thinkingLabel, setThinkingLabel] = useState(THINKING_LABELS[0])
+  const [thinkingLabel, setThinkingLabel] = useState<string>(THINKING_LABELS[0])
   const [error, setError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
