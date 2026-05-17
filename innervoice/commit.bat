@@ -1,7 +1,8 @@
 @echo off
 setlocal EnableExtensions
 
-rem Incremental commit script — run after EACH fix or feature slice, then continue work.
+rem Solo-author commit — run after EACH fix or feature slice, then continue work.
+rem Author: Avashik (from git config). No co-authors.
 rem Usage:
 rem   commit.bat "fix: short message"
 rem   commit.bat "feat: short message" --no-push
@@ -47,7 +48,7 @@ if %ERRORLEVEL%==0 (
   exit /b 0
 )
 
-git commit -m "%COMMIT_MSG%" -m "Co-authored-by: Ahamath Hathiqu <ahamathhathiqu@gmail.com>"
+git commit -m "%COMMIT_MSG%"
 if errorlevel 1 (
   echo [commit] FAILED — fix the issue above, then run commit.bat again with the same message.
   exit /b %ERRORLEVEL%

@@ -1,8 +1,16 @@
 ---
-description: Mid-process commit after each fix or feature slice (deprecated — see incremental-commits.mdc)
-alwaysApply: false
+description: Run commit.bat as soon as a task milestone is completed
+alwaysApply: true
 ---
 
-# Auto-Commit (superseded)
+# Auto-commit after each task milestone
 
-Use **incremental-commits.mdc** instead: commit after every single fix or feature slice, push, then continue — not only when the full task is done.
+When you finish a **fix**, **feature slice**, **style change**, or any discrete sub-task the user asked for:
+
+1. Run `.\commit.bat` with an appropriate message (`feat:`, `fix:`, `style:`, `chore:`, or `docs:`).
+2. Do this **before** starting the next sub-task in the same conversation.
+3. Do **not** add co-authors — commits are solo (Avashik only).
+
+If there is nothing to commit, skip and continue.
+
+See `incremental-commits.mdc` for full workflow details.

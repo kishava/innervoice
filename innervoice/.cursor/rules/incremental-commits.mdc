@@ -1,9 +1,9 @@
 ---
-description: Commit after every fix or feature slice, then continue working
+description: Commit after every fix or feature slice (solo author), then continue working
 alwaysApply: true
 ---
 
-# Incremental Git Commits (Mid-Process)
+# Incremental Git Commits (Solo — Avashik)
 
 Commit **during** work, not only at the end of a large task. Each logical milestone gets its own commit and push, then keep going.
 
@@ -14,28 +14,26 @@ Commit **during** work, not only at the end of a large task. Each logical milest
 | One bug/error fixed | `fix:` | `fix: stop mic from stopping after one second` |
 | One feature slice done | `feat:` | `feat: auto-play assistant reply in voice mode` |
 | UI/visual tweak | `style:` | `style: enlarge chat mic button` |
-| Config/tooling | `chore:` | `chore: expose ELEVENLABS_API_KEY in vite` |
-| Docs/rules only | `docs:` | `docs: document incremental commit workflow` |
+| Config/tooling | `chore:` | `chore: update commit workflow` |
+| Docs/rules only | `docs:` | `docs: document solo commit workflow` |
 
 ## Workflow for multi-step tasks
 
 1. Fix or build **one** thing.
 2. Run checks if quick (`npm run lint` / `npm run build` when relevant).
-3. Run `.\commit.bat "prefix: short description"`.
+3. Run `.\commit.bat "prefix: short description"` from `innervoice/`.
 4. **Continue** the next fix or feature — do not wait for the user to ask for a commit.
 5. Repeat until the full request is done.
 
 ## Rules
 
 - **One milestone = one commit.** Do not batch unrelated fixes or features into a single commit.
-- **Do not skip commits** because more work is coming — that is exactly when mid-process commits are required.
-- **Do not commit** `.env`, secrets, or `node_modules` (`.env` is gitignored).
-- If a commit fails (hooks, push, auth), tell the user what failed and how to fix it, then continue after they fix it.
-- Keep messages short (under ~72 chars), present tense, specific to what just landed.
+- **Do not skip commits** because more work is coming.
+- **Solo author only** — no `Co-authored-by` trailers or collaboration metadata in commits.
+- **Do not commit** `.env`, secrets, or `node_modules`.
+- If a commit fails (hooks, push, auth), report the error and continue after it is fixed.
 
 ## Command
-
-From `innervoice/` (or repo root via `commit.bat`):
 
 ```bat
 .\commit.bat "fix: describe this single milestone"
@@ -43,4 +41,4 @@ From `innervoice/` (or repo root via `commit.bat`):
 
 Optional: `.\commit.bat "feat: message" --no-push` to commit locally only.
 
-The script stages changes, commits with co-author trailer, and pushes to `origin main` unless `--no-push` is passed.
+The script stages changes, commits as **Avashik** (git `user.name` / `user.email`), and pushes to `origin main` unless `--no-push` is passed.

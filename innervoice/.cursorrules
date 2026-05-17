@@ -1,19 +1,19 @@
-# InnerVoice — Agent workflow
+# InnerVoice — Solo workflow (Avashik)
 
 ## Incremental commits (required)
 
-Commit **mid-process** after every completed milestone, then continue working.
+After **every** completed fix, feature slice, or task milestone, run `commit.bat` immediately, then continue working.
 
 - **One error fixed** → `.\commit.bat "fix: ..."` → continue
 - **One feature slice** → `.\commit.bat "feat: ..."` → continue
 - **UI change** → `.\commit.bat "style: ..."` → continue
 - **Config/tooling** → `.\commit.bat "chore: ..."` → continue
 
-Do **not** wait until the entire multi-step task is finished. Do **not** combine unrelated fixes/features in one commit.
+Do **not** wait until the entire multi-step request is finished. Do **not** batch unrelated changes into one commit.
 
 Prefixes: `feat:` | `fix:` | `style:` | `docs:` | `chore:`
 
-Run from `innervoice/` or repo root. Never commit `.env` or secrets.
+Commits use **your git identity only** (no co-authors). Never commit `.env`, secrets, or `node_modules`.
 
 ## Checks
 
