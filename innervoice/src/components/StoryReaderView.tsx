@@ -4,7 +4,8 @@ import { motion } from 'framer-motion'
 import { BreathingVoiceOrb, type OrbEmotion } from './BreathingVoiceOrb'
 import { useAudioOrb } from '../contexts/AudioOrbContext'
 import { useStoryPlayback } from '../hooks/useStoryPlayback'
-import { readScriptFile, STORY_SCRIPT_MAX_CHARS, splitStoryIntoChunks } from '../lib/storyChunks'
+import { readStoryFile, STORY_FILE_ACCEPT } from '../lib/readStoryFile'
+import { STORY_SCRIPT_MAX_CHARS, splitStoryIntoChunks } from '../lib/storyChunks'
 import type { Emotion } from '../types'
 
 interface Props {
@@ -71,7 +72,7 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
   const handleFile = useCallback(async (file: File | null) => {
     if (!file) return
     try {
-      const text = await readScriptFile(file)
+      const text = await readStoryFile(file)
       setScript(text)
       setUploadName(file.name)
     } catch (err) {
@@ -110,8 +111,8 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
             Story Reader
           </p>
           <p className="mt-1 max-w-xl text-xs text-text-tertiary">
-            Upload a script or paste text — your cloned voice narrates it in parts, with natural pauses between
-            paragraphs.
+            Upload a script (.txt, .md, .pdf, .docx) or paste text — your cloned voice narrates it in parts, with
+            natural pauses between paragraphs.
           </p>
         </div>
         <button
@@ -142,7 +143,7 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.md,text/plain,text/markdown"
+              accept={STORY_FILE_ACCEPT}
               className="sr-only"
               onChange={onFileInput}
             />
