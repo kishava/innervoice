@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConversationProvider, useConversation } from '@elevenlabs/react'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { fetchConversationToken } from '../../api/liveConversation'
@@ -12,25 +12,34 @@ interface Props {
   onBack: () => void
 }
 
+type ConnectWaiter = {
+  resolve: () => void
+  reject: (error: Error) => void
+}
+
 export function LiveTalkPage({ voiceId, onBack }: Props) {
+  const { user } = useAuth()
+  const overrides = useMemo(
+    () => (voiceId ? buildLiveConversationOverrides(voiceId, user?.name) : undefined),
+    [voiceId, user?.name],
+  )
+
   return (
-    <ConversationProvider>
+    <ConversationProvider overrides={overrides}>
       <LiveTalkPageInner voiceId={voiceId} onBack={onBack} />
     </ConversationProvider>
   )
 }
 
 function LiveTalkPageInner({ voiceId, onBack }: Props) {
-  const { user } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [inCall, setInCall] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
-
-  const overrides = useMemo(
-    () => (voiceId ? buildLiveConversationOverrides(voiceId, user?.name) : undefined),
-    [voiceId, user?.name],
-  )
+  const connectWaitRef = useRef<ConnectWaiter | null>(null)
+  const endingRef = useRef(false)
+  const hadConnectedRef = useRef(false)
 
   const syncOrb = useCallback(
     (status: string, speaking: boolean) => {
@@ -48,17 +57,45 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
   )
 
   const conversation = useConversation({
-    overrides,
     micMuted,
-    onConnect: () => setError(null),
-    onDisconnect: () => setOrbState('idle'),
-    onError: (message) => setError(typeof message === 'string' ? message : 'Live voice connection failed.'),
+    onConnect: () => {
+      setError(null)
+      setInCall(true)
+      hadConnectedRef.current = true
+    },
+    onDisconnect: () => {
+      setInCall(false)
+      setConnecting(false)
+      setOrbState('idle')
+      if (!endingRef.current && hadConnectedRef.current) {
+        setError((prev) => prev ?? 'Call ended unexpectedly. Tap Start call to try again.')
+      }
+      hadConnectedRef.current = false
+    },
+    onError: (message) => {
+      const detail = typeof message === 'string' ? message : 'Live voice connection failed.'
+      setError(detail)
+      setInCall(false)
+      setConnecting(false)
+      setOrbState('idle')
+      connectWaitRef.current?.reject(new Error(detail))
+      connectWaitRef.current = null
+    },
     onModeChange: (mode) => {
       setOrbState(mode.mode === 'speaking' ? 'speaking' : 'listening')
     },
     onStatusChange: (status) => {
       if (status.status === 'connecting') setOrbState('processing')
-      if (status.status === 'disconnected') setOrbState('idle')
+      if (status.status === 'connected') {
+        setInCall(true)
+        setError(null)
+        connectWaitRef.current?.resolve()
+        connectWaitRef.current = null
+      }
+      if (status.status === 'disconnected') {
+        setInCall(false)
+        setConnecting(false)
+      }
     },
   })
 
@@ -67,74 +104,92 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
   }, [conversation.status, conversation.isSpeaking, syncOrb])
 
   useEffect(() => {
-    return () => {
-      void conversation.endSession()
-      setOrbState('idle')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup on unmount only
-  }, [])
-
-  const connected = conversation.status === 'connected'
-  const busy = connecting || conversation.status === 'connecting'
-
-  useEffect(() => {
     if (conversation.status === 'error' && conversation.message) {
       setError(conversation.message)
+      setInCall(false)
       setConnecting(false)
-      setOrbState('idle')
+      connectWaitRef.current?.reject(new Error(conversation.message))
+      connectWaitRef.current = null
     }
-  }, [conversation.message, conversation.status, setOrbState])
+  }, [conversation.message, conversation.status])
+
+  const connected = inCall || conversation.status === 'connected'
+  const busy = connecting || conversation.status === 'connecting'
+
+  const waitUntilConnected = () =>
+    new Promise<void>((resolve, reject) => {
+      if (conversation.status === 'connected') {
+        resolve()
+        return
+      }
+      const timeoutId = window.setTimeout(() => {
+        connectWaitRef.current = null
+        reject(new Error('Connection timed out. Allow microphone access and try again.'))
+      }, 60_000)
+      connectWaitRef.current = {
+        resolve: () => {
+          window.clearTimeout(timeoutId)
+          resolve()
+        },
+        reject: (err) => {
+          window.clearTimeout(timeoutId)
+          reject(err)
+        },
+      }
+    })
 
   const start = async () => {
     if (!voiceId || busy || connected) return
     setConnecting(true)
     setError(null)
+    setInCall(false)
     setOrbState('processing')
-    try {
-      const token = await fetchConversationToken()
-      await new Promise<void>((resolve, reject) => {
-        let settled = false
-        const timer = window.setTimeout(() => {
-          if (settled) return
-          settled = true
-          reject(new Error('Connection timed out. Allow microphone access and try again.'))
-        }, 60_000)
+    endingRef.current = false
+    hadConnectedRef.current = false
 
-        conversation.startSession({
-          conversationToken: token,
-          connectionType: 'webrtc',
-          onConnect: () => {
-            setError(null)
-            if (settled) return
-            settled = true
-            window.clearTimeout(timer)
-            resolve()
-          },
-          onError: (message) => {
-            const detail = typeof message === 'string' ? message : 'Live voice connection failed.'
-            setError(detail)
-            if (settled) return
-            settled = true
-            window.clearTimeout(timer)
-            reject(new Error(detail))
-          },
-        })
+    try {
+      if (conversation.status !== 'disconnected') {
+        conversation.endSession()
+        await new Promise((r) => window.setTimeout(r, 300))
+      }
+
+      const token = await fetchConversationToken()
+      const waitForConnected = waitUntilConnected()
+
+      conversation.startSession({
+        conversationToken: token,
+        connectionType: 'webrtc',
       })
+
+      await new Promise((r) => window.setTimeout(r, 400))
+      if (conversation.status === 'disconnected' && !connectWaitRef.current) {
+        throw new Error('Could not start the live session. Tap Start call to try again.')
+      }
+
+      await waitForConnected
+      setInCall(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start live call.')
+      setInCall(false)
       setOrbState('idle')
+      connectWaitRef.current = null
     } finally {
       setConnecting(false)
     }
   }
 
   const end = async () => {
+    endingRef.current = true
+    setError(null)
     try {
-      await conversation.endSession()
+      conversation.endSession()
     } catch {
       /* ignore */
     }
+    setInCall(false)
+    setConnecting(false)
     setOrbState('idle')
+    endingRef.current = false
   }
 
   const toggleMute = () => {

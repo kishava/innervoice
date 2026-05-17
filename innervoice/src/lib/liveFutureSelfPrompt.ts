@@ -32,9 +32,6 @@ export function buildLiveConversationOverrides(voiceId: string, userName?: strin
     },
     tts: {
       voiceId,
-      speed: 1,
-      stability: 0.35,
-      similarityBoost: 0.8,
     },
   }
 }
