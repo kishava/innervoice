@@ -3,6 +3,8 @@ dist
 .DS_Store
 *.local
 .env
+.env.supabase.secrets
+.supabase-access-token
 coverage
 *.log
 *.tsbuildinfo
