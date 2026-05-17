@@ -6,14 +6,10 @@ import { useAudioOrb } from '../contexts/AudioOrbContext'
 import { useStoryPlayback } from '../hooks/useStoryPlayback'
 import { readStoryFile, STORY_FILE_ACCEPT } from '../lib/readStoryFile'
 import { STORY_SCRIPT_MAX_CHARS, splitStoryIntoChunks } from '../lib/storyChunks'
-import type { Emotion, UserVoice } from '../types'
-import { VoicePicker } from './VoicePicker'
+import type { Emotion } from '../types'
 
 interface Props {
   voiceId: string | null
-  voices?: UserVoice[]
-  onSelectVoice?: (elevenlabsVoiceId: string) => void
-  onManageVoices?: () => void
   onBack: () => void
 }
 
@@ -50,13 +46,7 @@ function statusLabel(status: string, chunkIndex: number, total: number): string 
   }
 }
 
-export function StoryReaderView({
-  voiceId,
-  voices = [],
-  onSelectVoice,
-  onManageVoices,
-  onBack,
-}: Props) {
+export function StoryReaderView({ voiceId, onBack }: Props) {
   const [script, setScript] = useState('')
   const [emotion, setEmotion] = useState<Emotion>('neutral')
   const [uploadName, setUploadName] = useState<string | null>(null)
@@ -216,22 +206,6 @@ export function StoryReaderView({
               size={120}
             />
           </div>
-
-          {voices.length > 0 && onSelectVoice && (
-            <div className="space-y-1">
-              <p className="text-xs text-text-tertiary">Narration voice</p>
-              <VoicePicker
-                voices={voices}
-                activeVoiceId={voiceId}
-                onSelect={(id) => {
-                  if (id !== voiceId) stop()
-                  onSelectVoice(id)
-                }}
-                onManage={onManageVoices}
-                disabled={isActive}
-              />
-            </div>
-          )}
 
           <label className="text-xs text-text-tertiary">
             Narration mood

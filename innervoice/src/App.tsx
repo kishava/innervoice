@@ -93,6 +93,7 @@ export default function App() {
     maxVoices,
     refreshVoices,
     addVoice,
+    importVoice,
     renameVoice,
     deleteVoice,
   } = useUserVoices(userId, voiceId)
@@ -339,10 +340,6 @@ export default function App() {
           step={step}
           hasHistory={conversations.length > 0}
           hasVoice={hasTrainedVoice}
-          voices={voices}
-          activeVoiceId={voiceId}
-          onSelectVoice={selectVoice}
-          onManageVoices={() => navigate('voices')}
           onNavigate={navigate}
           onOpenHistory={() => setShowHistory(true)}
           onOpenProfile={() => setShowProfile(true)}
@@ -440,6 +437,7 @@ export default function App() {
                   else setUserVoiceId(null)
                 }
               }}
+              onImportVoice={importVoice}
               onTrainNew={() => {
                 if (!canAddVoice) {
                   setError(voiceLimitMessage(voices.length))
@@ -459,20 +457,10 @@ export default function App() {
               thinkingLabel={thinkingLabel}
               onSend={handleSendMessage}
               onOpenStory={() => navigate('story')}
-              voices={voices}
-              activeVoiceId={voiceId}
-              onSelectVoice={selectVoice}
-              onManageVoices={() => navigate('voices')}
             />
           )}
           {step === 'story' && (
-            <StoryReaderView
-              voiceId={voiceId}
-              voices={voices}
-              onSelectVoice={selectVoice}
-              onManageVoices={() => navigate('voices')}
-              onBack={() => navigate('chat')}
-            />
+            <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
           )}
           {step === 'live' && (
             <LiveTalkPage

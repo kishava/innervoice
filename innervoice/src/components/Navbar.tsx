@@ -17,17 +17,12 @@ import { useAuth } from '../AuthContext'
 import { ProfileAvatar } from './ProfileAvatar'
 import { ThemeToggle } from './ThemeToggle'
 import { NavbarOrb } from './NavbarOrb'
-import { VoicePicker } from './VoicePicker'
-import type { AppStep, UserVoice } from '../types'
+import type { AppStep } from '../types'
 
 interface Props {
   step: AppStep
   hasHistory: boolean
   hasVoice?: boolean
-  voices?: UserVoice[]
-  activeVoiceId?: string | null
-  onSelectVoice?: (elevenlabsVoiceId: string) => void
-  onManageVoices?: () => void
   onNavigate: (step: AppStep) => void
   onOpenHistory: () => void
   onOpenProfile: () => void
@@ -67,10 +62,6 @@ export function Navbar({
   step,
   hasHistory,
   hasVoice = false,
-  voices = [],
-  activeVoiceId = null,
-  onSelectVoice,
-  onManageVoices,
   onNavigate,
   onOpenHistory,
   onOpenProfile,
@@ -146,16 +137,7 @@ export function Navbar({
           </div>
         </div>
 
-        <div className="flex justify-center justify-self-center px-1">
-          {isAuthenticated && voices.length > 0 && onSelectVoice ? (
-            <VoicePicker
-              voices={voices}
-              activeVoiceId={activeVoiceId}
-              onSelect={onSelectVoice}
-              onManage={onManageVoices}
-            />
-          ) : null}
-        </div>
+        <motion.div className="min-w-[3.5rem] justify-self-center sm:min-w-[4.25rem]" aria-hidden />
 
         <div className="col-start-3 flex items-center justify-end gap-1.5 justify-self-end">
           <div className="hidden items-center gap-1.5 sm:flex">

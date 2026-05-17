@@ -2,6 +2,17 @@ import { invokeGateway } from './backendGateway'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { VOICE_INACTIVE_MS } from '../lib/voicePolicy'
 
+export interface ElevenLabsVoiceCatalogItem {
+  voiceId: string
+  name: string
+  category: string
+}
+
+export async function listElevenLabsVoices(): Promise<ElevenLabsVoiceCatalogItem[]> {
+  const data = await invokeGateway<{ voices: ElevenLabsVoiceCatalogItem[] }>('listVoices', {})
+  return data.voices ?? []
+}
+
 export async function deleteRemoteVoice(elevenlabsVoiceId: string): Promise<void> {
   await invokeGateway('deleteVoice', { voiceId: elevenlabsVoiceId })
 }

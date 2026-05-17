@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { BookOpen, Lightbulb, Pause, Play, Send } from 'lucide-react'
-import type { Message, UserVoice } from '../types'
-import { VoicePicker } from './VoicePicker'
+import type { Message } from '../types'
 import { FollowUpSuggestions } from './FollowUpSuggestions'
 import { VoiceInput } from './VoiceInput'
 import { useAudioOrb } from '../contexts/AudioOrbContext'
@@ -15,10 +14,6 @@ interface Props {
   thinkingLabel: string
   onSend: (text: string) => void
   onOpenStory?: () => void
-  voices?: UserVoice[]
-  activeVoiceId?: string | null
-  onSelectVoice?: (elevenlabsVoiceId: string) => void
-  onManageVoices?: () => void
 }
 
 function VisualBars({ levels }: { levels: number[] }) {
@@ -42,10 +37,6 @@ export function ChatView({
   thinkingLabel,
   onSend,
   onOpenStory,
-  voices = [],
-  activeVoiceId = null,
-  onSelectVoice,
-  onManageVoices,
 }: Props) {
   const [input, setInput] = useState('')
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(true)
@@ -91,17 +82,6 @@ export function ChatView({
   const canSend = useMemo(() => input.trim().length > 0 && !isProcessing, [input, isProcessing])
   const isLanding = messages.length === 0 && !isProcessing
 
-  const voicePicker =
-    voices.length > 0 && onSelectVoice ? (
-      <VoicePicker
-        voices={voices}
-        activeVoiceId={activeVoiceId}
-        onSelect={onSelectVoice}
-        onManage={onManageVoices}
-        disabled={isProcessing || assistantSpeaking}
-      />
-    ) : null
-
   const send = () => {
     const text = input.trim()
     if (!text || isProcessing) return
@@ -136,7 +116,6 @@ export function ChatView({
                 Hold Space or tap the mic to talk. Open the lightbulb for ideas.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {voicePicker}
                 <span className="inline-flex items-center rounded-full border border-accent/35 px-2.5 py-1 text-xs text-text-primary">
                   Voice mode: <span className="ml-1 text-accent">{voiceModeEnabled ? 'ON' : 'OFF'}</span>
                 </span>
@@ -221,20 +200,6 @@ export function ChatView({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      {voicePicker && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
-          {voicePicker}
-          {onManageVoices && (
-            <button
-              type="button"
-              onClick={onManageVoices}
-              className="text-xs text-text-tertiary transition hover:text-text-primary"
-            >
-              All voices
-            </button>
-          )}
-        </div>
-      )}
       <div
         ref={logRef}
         role="log"

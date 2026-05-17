@@ -44,7 +44,7 @@ function disconnectMessage(details?: DisconnectionDetails): string | null {
   return null
 }
 
-export function LiveTalkPage({ voiceId, voices = [], onSelectVoice, onManageVoices, onBack }: Props) {
+export function LiveTalkPage({ voiceId, voices, onSelectVoice, onManageVoices, onBack }: Props) {
   return (
     <ConversationProvider>
       <LiveTalkPageInner
@@ -58,7 +58,7 @@ export function LiveTalkPage({ voiceId, voices = [], onSelectVoice, onManageVoic
   )
 }
 
-function LiveTalkPageInner({ voiceId, voices = [], onSelectVoice, onManageVoices, onBack }: Props) {
+function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onBack }: Props) {
   const { user } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
@@ -250,59 +250,69 @@ function LiveTalkPageInner({ voiceId, voices = [], onSelectVoice, onManageVoices
     setMicMuted((prev) => !prev)
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-2 py-4 sm:px-4">
-      <div className="text-center">
-        <h2 className="text-lg font-medium text-text-primary">Talk to your future self</h2>
-        <p className="mt-1 max-w-sm text-sm text-text-secondary">
-          Live voice — speak naturally. Your cloned voice and personality are applied for this session.
-        </p>
-      </div>
+  const statusLine = busy
+    ? 'Connecting…'
+    : connected
+      ? conversation.isSpeaking
+        ? 'Future self is speaking…'
+        : 'Listening — say what’s on your mind'
+      : !voiceId
+        ? 'Select a voice above, then tap Start call'
+        : 'Tap Start call when you’re ready'
 
-      {voices.length > 0 && onSelectVoice && (
-        <div className="flex flex-col items-center gap-1">
-          <p className="text-xs text-text-tertiary">Voice for this call</p>
-          <VoicePicker
-            voices={voices}
-            activeVoiceId={voiceId}
-            onSelect={(id) => {
-              if (id !== voiceId) {
-                if (connected || busy) void end()
-                onSelectVoice(id)
-              }
-            }}
-            onManage={onManageVoices}
-            disabled={busy}
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-5 px-4 py-6 sm:gap-6">
+        <header className="w-full text-center">
+          <h2 className="text-lg font-medium text-text-primary">Talk to your future self</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Live voice — your selected clone is applied on the ElevenLabs agent for this call.
+          </p>
+        </header>
+
+        {voices && voices.length > 0 && onSelectVoice && (
+          <section className="flex w-full flex-col items-center gap-2">
+            <p className="text-xs font-medium text-text-tertiary">Voice for this call</p>
+            <VoicePicker
+              voices={voices}
+              activeVoiceId={voiceId}
+              menuCentered
+              onSelect={(id) => {
+                if (id !== voiceId) {
+                  if (connected || busy) void end()
+                  onSelectVoice(id)
+                }
+              }}
+              onManage={onManageVoices}
+              disabled={busy || connected}
+            />
+          </section>
+        )}
+
+        <div className="flex w-full shrink-0 justify-center py-2">
+          <BreathingVoiceOrb
+            state={
+              busy
+                ? 'processing'
+                : connected
+                  ? conversation.isSpeaking
+                    ? 'speaking'
+                    : 'listening'
+                  : 'idle'
+            }
+            className="mx-auto h-40 w-40 shrink-0 sm:h-48 sm:w-48"
           />
         </div>
-      )}
 
-      <BreathingVoiceOrb
-        state={
-          busy
-            ? 'processing'
-            : connected
-              ? conversation.isSpeaking
-                ? 'speaking'
-                : 'listening'
-              : 'idle'
-        }
-        className="h-40 w-40 sm:h-48 sm:w-48"
-      />
+        {error && (
+          <p className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-center text-sm text-red-200">
+            {error}
+          </p>
+        )}
 
-      {error && (
-        <p className="max-w-md rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-center text-sm text-red-200">
-          {error}
-        </p>
-      )}
+        <p className="min-h-5 w-full text-center text-xs text-text-tertiary">{statusLine}</p>
 
-      <p className="text-center text-xs text-text-tertiary">
-        {busy && 'Connecting…'}
-        {!busy && connected && (conversation.isSpeaking ? 'Future self is speaking…' : 'Listening — say what’s on your mind')}
-        {!busy && !connected && 'Tap start when you’re ready for a live call'}
-      </p>
-
-      <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="flex w-full flex-wrap items-center justify-center gap-3 pb-2">
         {!connected ? (
           <button
             type="button"
@@ -340,6 +350,7 @@ function LiveTalkPageInner({ voiceId, voices = [], onSelectVoice, onManageVoices
         >
           Back to chat
         </button>
+        </div>
       </div>
     </div>
   )

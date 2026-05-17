@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { Check, Mic2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { Check, ChevronDown, ChevronUp, Download, Mic2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { listElevenLabsVoices, type ElevenLabsVoiceCatalogItem } from '../api/voices'
 import type { UserVoice } from '../types'
 
 interface Props {
@@ -13,8 +14,17 @@ interface Props {
   onSelect: (elevenlabsVoiceId: string) => void
   onRename: (id: string, name: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onImportVoice: (elevenlabsVoiceId: string, name: string) => Promise<unknown>
   onTrainNew: () => void
   onBack: () => void
+}
+
+function categoryLabel(category: string): string {
+  if (category === 'premade') return 'Premade'
+  if (category === 'cloned') return 'Cloned'
+  if (category === 'generated') return 'Generated'
+  if (category === 'professional') return 'Professional'
+  return category
 }
 
 export function VoicesView({
@@ -27,6 +37,7 @@ export function VoicesView({
   onSelect,
   onRename,
   onDelete,
+  onImportVoice,
   onTrainNew,
   onBack,
 }: Props) {
@@ -34,6 +45,18 @@ export function VoicesView({
   const [editName, setEditName] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [catalogOpen, setCatalogOpen] = useState(false)
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogVoices, setCatalogVoices] = useState<ElevenLabsVoiceCatalogItem[]>([])
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
+  const [importBusy, setImportBusy] = useState(false)
+
+  const savedIds = useMemo(() => new Set(voices.map((v) => v.elevenlabsVoiceId)), [voices])
+
+  const availableCatalog = useMemo(
+    () => catalogVoices.filter((v) => !savedIds.has(v.voiceId)),
+    [catalogVoices, savedIds],
+  )
 
   const startEdit = (voice: UserVoice) => {
     setEditingId(voice.id)
@@ -69,6 +92,73 @@ export function VoicesView({
     }
   }
 
+  const loadCatalog = useCallback(async () => {
+    setCatalogLoading(true)
+    setError(null)
+    try {
+      const list = await listElevenLabsVoices()
+      setCatalogVoices(list)
+      setCatalogLoaded(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load ElevenLabs voices.')
+    } finally {
+      setCatalogLoading(false)
+    }
+  }, [])
+
+  const toggleCatalog = () => {
+    const next = !catalogOpen
+    setCatalogOpen(next)
+    if (next && !catalogLoaded && !catalogLoading) void loadCatalog()
+  }
+
+  const handleImport = async (item: ElevenLabsVoiceCatalogItem) => {
+    if (!canAddVoice) {
+      setError(`You can keep up to ${maxVoices} voices. Delete one or switch active voice first.`)
+      return
+    }
+    setImportBusy(true)
+    setError(null)
+    try {
+      await onImportVoice(item.voiceId, item.name)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add voice.')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  const handleImportAll = async () => {
+    if (!canAddVoice || availableCatalog.length === 0) return
+    setImportBusy(true)
+    setError(null)
+    let added = 0
+    let slotsLeft = canAddVoice ? maxVoices - voices.length : 0
+
+    try {
+      for (const item of availableCatalog) {
+        if (slotsLeft <= 0) break
+        if (savedIds.has(item.voiceId)) continue
+        try {
+          await onImportVoice(item.voiceId, item.name)
+          added += 1
+          slotsLeft -= 1
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Could not add voice.'
+          if (message.includes('up to')) break
+          throw err
+        }
+      }
+      if (added === 0 && availableCatalog.length > 0 && !canAddVoice) {
+        setError(`Voice limit reached (${maxVoices}/${maxVoices}).`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add voices.')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -82,8 +172,8 @@ export function VoicesView({
             My voices
           </h2>
           <p className="mt-1 max-w-md text-sm text-text-secondary">
-            Trained voices for chat, story, and live talk. Up to {maxVoices} per account; inactive accounts lose
-            voices after 1 week.
+            Choose active voices for chat, story, and live talk. Add premade or cloned models from your ElevenLabs
+            account, or train your own. Up to {maxVoices} saved here.
           </p>
         </div>
         <button
@@ -111,13 +201,89 @@ export function VoicesView({
         {canAddVoice ? 'Train a new voice' : `Voice limit reached (${maxVoices}/${maxVoices})`}
       </button>
 
+      <div className="rounded-2xl border border-border/80 bg-elevated/50">
+        <button
+          type="button"
+          onClick={toggleCatalog}
+          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left text-sm font-medium text-text-primary"
+        >
+          <span className="inline-flex items-center gap-2">
+            <Download size={16} className="text-accent" />
+            Add from ElevenLabs
+          </span>
+          {catalogOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+
+        {catalogOpen && (
+          <div className="border-t border-border/80 px-3 pb-3 pt-2">
+            <p className="mb-2 text-xs text-text-tertiary">
+              Premade and custom voices in your ElevenLabs account. Tap to add to My voices (up to {maxVoices}).
+            </p>
+            {catalogLoading ? (
+              <p className="py-4 text-center text-sm text-text-secondary">Loading ElevenLabs voices…</p>
+            ) : (
+              <>
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={importBusy || !canAddVoice || availableCatalog.length === 0}
+                    onClick={() => void handleImportAll()}
+                    className="rounded-full border border-accent/50 bg-accent-soft/40 px-3 py-1.5 text-xs font-medium text-text-primary transition hover:border-accent disabled:opacity-50"
+                  >
+                    Add all available
+                    {availableCatalog.length > 0 ? ` (${Math.min(availableCatalog.length, maxVoices - voices.length)})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={catalogLoading}
+                    onClick={() => void loadCatalog()}
+                    className="rounded-full border border-border/80 px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent/60 hover:text-text-primary disabled:opacity-50"
+                  >
+                    Refresh list
+                  </button>
+                </div>
+                {availableCatalog.length === 0 ? (
+                  <p className="py-3 text-center text-sm text-text-secondary">
+                    {catalogLoaded ? 'No new voices to add — your library is up to date.' : 'Open this section to load voices.'}
+                  </p>
+                ) : (
+                  <ul className="max-h-52 space-y-1 overflow-y-auto pr-1">
+                    {availableCatalog.map((item) => (
+                      <li
+                        key={item.voiceId}
+                        className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface-card/40 px-2 py-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-text-primary">{item.name}</p>
+                          <p className="text-[10px] uppercase tracking-wide text-text-tertiary">
+                            {categoryLabel(item.category)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={importBusy || !canAddVoice}
+                          onClick={() => void handleImport(item)}
+                          className="shrink-0 rounded-full border border-accent/50 px-3 py-1 text-xs text-text-primary transition hover:bg-accent-soft/50 disabled:opacity-50"
+                        >
+                          Add
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       {loading ? (
         <p className="rounded-2xl border border-border/80 bg-elevated/60 px-4 py-6 text-center text-sm text-text-secondary">
           Loading voices…
         </p>
       ) : voices.length === 0 ? (
         <p className="rounded-2xl border border-border/80 bg-elevated/60 px-4 py-6 text-center text-sm text-text-secondary">
-          No voices yet. Train your first voice to start chatting.
+          No voices yet. Add from ElevenLabs above or train your first voice.
         </p>
       ) : (
         <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">

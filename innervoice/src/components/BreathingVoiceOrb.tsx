@@ -212,13 +212,15 @@ export function BreathingVoiceOrb({
     return () => mq.removeEventListener?.('change', setFromMq)
   }, [])
 
+  const sizeFromClass = className?.match(/\b(h-|w-|size-)/)
   return (
     <div
-      className={className}
-      style={{ width: size, height: size }}
+      className={[className, 'relative overflow-hidden'].filter(Boolean).join(' ')}
+      style={sizeFromClass ? undefined : { width: size, height: size }}
       aria-hidden="true"
     >
       <Canvas
+        className="!block h-full w-full"
         camera={{ position: [0, 0, 4.2], fov: 45 }}
         dpr={[1, isMobile ? 1.5 : 2]}
         gl={{ antialias: !isMobile, alpha: true, powerPreference: 'low-power' }}

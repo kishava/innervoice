@@ -118,29 +118,9 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
     void refreshVoices()
   }, [refreshVoices])
 
-  const addVoice = useCallback(
-    async (elevenlabsVoiceId: string, name: string) => {
+  const saveVoiceRow = useCallback(
+    async (elevenlabsVoiceId: string, trimmed: string, cleanupOrphanOnLimit = false) => {
       if (!userId || !supabase) throw new Error('Sign in to save voices.')
-
-      const trimmed = name.trim()
-      if (!trimmed) throw new Error('Voice name cannot be empty.')
-
-      const { count, error: countError } = await supabase
-        .from('user_voices')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-
-      if (countError && !isMissingUserVoicesTable(countError)) throw countError
-
-      const existing = voices.find((v) => v.elevenlabsVoiceId === elevenlabsVoiceId)
-      if (!existing && (count ?? voices.length) >= MAX_VOICES_PER_USER) {
-        try {
-          await deleteRemoteVoice(elevenlabsVoiceId)
-        } catch {
-          /* limit reached before save */
-        }
-        throw new Error(voiceLimitMessage(MAX_VOICES_PER_USER))
-      }
 
       const { data, error } = await supabase
         .from('user_voices')
@@ -169,7 +149,10 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
           })
           return mapped
         }
-        if (error.message?.includes('Voice limit') || error.code === 'P0001') {
+        if (
+          cleanupOrphanOnLimit &&
+          (error.message?.includes('Voice limit') || error.code === 'P0001')
+        ) {
           try {
             await deleteRemoteVoice(elevenlabsVoiceId)
           } catch {
@@ -183,7 +166,60 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
       setVoices((prev) => [mapped, ...prev.filter((v) => v.elevenlabsVoiceId !== elevenlabsVoiceId)])
       return mapped
     },
-    [userId, voices],
+    [userId],
+  )
+
+  const addVoice = useCallback(
+    async (elevenlabsVoiceId: string, name: string) => {
+      if (!userId || !supabase) throw new Error('Sign in to save voices.')
+
+      const trimmed = name.trim()
+      if (!trimmed) throw new Error('Voice name cannot be empty.')
+
+      const { count, error: countError } = await supabase
+        .from('user_voices')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+
+      if (countError && !isMissingUserVoicesTable(countError)) throw countError
+
+      const existing = voices.find((v) => v.elevenlabsVoiceId === elevenlabsVoiceId)
+      if (!existing && (count ?? voices.length) >= MAX_VOICES_PER_USER) {
+        try {
+          await deleteRemoteVoice(elevenlabsVoiceId)
+        } catch {
+          /* limit reached before save */
+        }
+        throw new Error(voiceLimitMessage(MAX_VOICES_PER_USER))
+      }
+
+      return saveVoiceRow(elevenlabsVoiceId, trimmed, true)
+    },
+    [saveVoiceRow, userId, voices],
+  )
+
+  const importVoice = useCallback(
+    async (elevenlabsVoiceId: string, name: string) => {
+      if (!userId || !supabase) throw new Error('Sign in to save voices.')
+
+      const trimmed = name.trim()
+      if (!trimmed) throw new Error('Voice name cannot be empty.')
+
+      const { count, error: countError } = await supabase
+        .from('user_voices')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+
+      if (countError && !isMissingUserVoicesTable(countError)) throw countError
+
+      const existing = voices.find((v) => v.elevenlabsVoiceId === elevenlabsVoiceId)
+      if (!existing && (count ?? voices.length) >= MAX_VOICES_PER_USER) {
+        throw new Error(voiceLimitMessage(MAX_VOICES_PER_USER))
+      }
+
+      return saveVoiceRow(elevenlabsVoiceId, trimmed)
+    },
+    [saveVoiceRow, userId, voices],
   )
 
   const renameVoice = useCallback(
@@ -246,6 +282,7 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
     maxVoices: MAX_VOICES_PER_USER,
     refreshVoices,
     addVoice,
+    importVoice,
     renameVoice,
     deleteVoice,
   }

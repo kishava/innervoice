@@ -8,9 +8,18 @@ interface Props {
   onSelect: (elevenlabsVoiceId: string) => void
   onManage?: () => void
   disabled?: boolean
+  /** Center the dropdown under the trigger (e.g. Talk page). */
+  menuCentered?: boolean
 }
 
-export function VoicePicker({ voices, activeVoiceId, onSelect, onManage, disabled = false }: Props) {
+export function VoicePicker({
+  voices,
+  activeVoiceId,
+  onSelect,
+  onManage,
+  disabled = false,
+  menuCentered = false,
+}: Props) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
 
@@ -37,7 +46,7 @@ export function VoicePicker({ voices, activeVoiceId, onSelect, onManage, disable
   if (voices.length === 0 && !activeVoiceId) return null
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className={`relative ${menuCentered ? 'mx-auto' : ''}`}>
       <button
         type="button"
         disabled={disabled || voices.length === 0}
@@ -54,7 +63,9 @@ export function VoicePicker({ voices, activeVoiceId, onSelect, onManage, disable
       {open && voices.length > 0 && (
         <div
           role="listbox"
-          className="glass-panel absolute left-0 top-full z-40 mt-1.5 min-w-[220px] max-w-[min(320px,90vw)] rounded-2xl border border-border/80 p-1.5 shadow-[0_12px_35px_rgb(0_0_0_/_0.3)]"
+          className={`glass-panel absolute top-full z-40 mt-1.5 min-w-[220px] max-w-[min(320px,90vw)] rounded-2xl border border-border/80 p-1.5 shadow-[0_12px_35px_rgb(0_0_0_/_0.3)] ${
+            menuCentered ? 'left-1/2 -translate-x-1/2' : 'left-0'
+          }`}
         >
           <p className="px-2.5 py-1 text-[10px] uppercase tracking-wider text-text-tertiary">Speaking as</p>
           {voices.map((voice) => {
