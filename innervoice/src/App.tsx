@@ -463,13 +463,7 @@ export default function App() {
             <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
           )}
           {step === 'live' && (
-            <LiveTalkPage
-              voiceId={voiceId}
-              voices={voices}
-              onSelectVoice={selectVoice}
-              onManageVoices={() => navigate('voices')}
-              onBack={() => navigate('chat')}
-            />
+            <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />
           )}
         </motion.section>
 
