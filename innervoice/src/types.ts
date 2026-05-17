@@ -1,4 +1,4 @@
-export type AppStep = 'auth' | 'home' | 'recording' | 'cloning' | 'chat' | 'story'
+export type AppStep = 'auth' | 'home' | 'recording' | 'cloning' | 'chat' | 'story' | 'live'
 
 export type Emotion =
   | 'neutral'

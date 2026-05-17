@@ -14,6 +14,7 @@ import { ProfilePanel } from './components/ProfilePanel'
 import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { RecordingView } from './components/RecordingView'
 import { StoryReaderView } from './components/StoryReaderView'
+import { LiveTalkPage } from './features/liveTalk/LiveTalkPage'
 import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
 
@@ -385,6 +386,9 @@ export default function App() {
           )}
           {step === 'story' && (
             <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
+          )}
+          {step === 'live' && (
+            <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />
           )}
         </motion.section>
 

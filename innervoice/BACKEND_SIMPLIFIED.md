@@ -27,6 +27,7 @@ Server-only Supabase secrets (set via CLI/dashboard, not frontend `.env`):
 
 - `OPENAI_API_KEY`
 - `ELEVENLABS_API_KEY`
+- `ELEVENLABS_AGENT_ID` — Conversational AI agent ID for **Talk** (live voice). Create an agent at [ElevenLabs Agents](https://elevenlabs.io/app/conversational-ai), copy its ID, then set the secret. Per-session voice + future-self prompt are overridden in the app.
 
 ## Troubleshooting
 
@@ -46,7 +47,7 @@ From repo root:
 ```bash
 npx supabase link --project-ref sfkjycsvkhkcxoabcyjo
 npx supabase db push
-npx supabase secrets set OPENAI_API_KEY=... ELEVENLABS_API_KEY=...
+npx supabase secrets set OPENAI_API_KEY=... ELEVENLABS_API_KEY=... ELEVENLABS_AGENT_ID=...
 npx supabase functions deploy ai-gateway
 ```
 

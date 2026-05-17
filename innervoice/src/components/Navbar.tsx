@@ -7,6 +7,7 @@ import {
   BookOpen,
   MessageCircle,
   Mic2,
+  Phone,
   User,
   UserPlus,
   X,
@@ -155,6 +156,13 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                   active={step === 'story'}
                   disabled={!user?.voiceId}
                 />
+                <NavButton
+                  label="Talk"
+                  icon={<Phone size={14} />}
+                  onClick={() => go('live')}
+                  active={step === 'live'}
+                  disabled={!user?.voiceId}
+                />
                 <motion.div ref={optionsRef} className="relative">
                   <button
                     type="button"
@@ -265,6 +273,13 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                 icon={<BookOpen size={14} />}
                 onClick={() => go('story')}
                 active={step === 'story'}
+                disabled={!user?.voiceId}
+              />
+              <NavButton
+                label="Talk"
+                icon={<Phone size={14} />}
+                onClick={() => go('live')}
+                active={step === 'live'}
                 disabled={!user?.voiceId}
               />
               <div className="rounded-2xl border border-border/80 bg-elevated/80 p-2">

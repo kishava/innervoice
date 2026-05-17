@@ -290,6 +290,31 @@ async function transcribeAudio(payload: {
   throw new Error('No transcription provider configured. Set OPENAI_API_KEY or ELEVENLABS_API_KEY.')
 }
 
+async function getConversationToken() {
+  const key = Deno.env.get('ELEVENLABS_API_KEY')
+  const agentId = Deno.env.get('ELEVENLABS_AGENT_ID')
+  if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
+  if (!agentId) {
+    throw new Error(
+      'ELEVENLABS_AGENT_ID is not configured. Create a Conversational AI agent in ElevenLabs and add its ID to Supabase secrets.',
+    )
+  }
+
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
+    { headers: { 'xi-api-key': key } },
+  )
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(`ElevenLabs conversation token failed (${response.status}): ${detail}`)
+  }
+
+  const data = (await response.json()) as { token?: string }
+  if (!data.token) throw new Error('ElevenLabs returned no conversation token.')
+  return { token: data.token }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -326,6 +351,10 @@ Deno.serve(async (request) => {
         const data = await transcribeAudio(
           payload as { audioBase64: string; mimeType: string; whisperOnly?: boolean },
         )
+        return json(200, { ok: true, data })
+      }
+      case 'getConversationToken': {
+        const data = await getConversationToken()
         return json(200, { ok: true, data })
       }
       default:
