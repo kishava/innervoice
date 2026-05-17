@@ -17,6 +17,7 @@ import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { RecordingView } from './components/RecordingView'
 import { StoryReaderView } from './components/StoryReaderView'
 import { LiveTalkPage } from './features/liveTalk/LiveTalkPage'
+import { TalkDebugBoundary } from './features/liveTalk/TalkDebugBoundary'
 import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
 
@@ -275,10 +276,46 @@ export default function App() {
       if (next === 'recording') {
         greetedFor.current = null
       }
+      if (next === 'live') {
+        // #region agent log
+        fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
+          body: JSON.stringify({
+            sessionId: '0d719b',
+            runId: 'pre-fix',
+            hypothesisId: 'H2',
+            location: 'App.tsx:navigate',
+            message: 'navigate to live',
+            data: { hasVoiceId: Boolean(voiceId) },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {})
+        // #endregion
+      }
       setStep(next)
     },
-    [],
+    [voiceId],
   )
+
+  useEffect(() => {
+    if (step !== 'live') return
+    // #region agent log
+    fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
+      body: JSON.stringify({
+        sessionId: '0d719b',
+        runId: 'pre-fix',
+        hypothesisId: 'H2,H3,H5',
+        location: 'App.tsx:liveStepEffect',
+        message: 'live step active',
+        data: { hasVoiceId: Boolean(voiceId), isAuthenticated },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
+  }, [step, voiceId, isAuthenticated])
 
   return (
     <div className="orb-bg nebula-bg tech-grid relative min-h-dvh overflow-x-hidden bg-surface text-text-primary transition-colors duration-300">
@@ -448,7 +485,9 @@ export default function App() {
             <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
           )}
           {step === 'live' && (
-            <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />
+            <TalkDebugBoundary>
+              <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />
+            </TalkDebugBoundary>
           )}
         </motion.section>
 

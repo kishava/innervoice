@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useConversation } from '@elevenlabs/react'
+import { ConversationProvider, useConversation } from '@elevenlabs/react'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { fetchConversationToken } from '../../api/liveConversation'
 import { useAuth } from '../../AuthContext'
@@ -13,6 +13,30 @@ interface Props {
 }
 
 export function LiveTalkPage({ voiceId, onBack }: Props) {
+  return (
+    <ConversationProvider>
+      <LiveTalkPageInner voiceId={voiceId} onBack={onBack} />
+    </ConversationProvider>
+  )
+}
+
+function LiveTalkPageInner({ voiceId, onBack }: Props) {
+  // #region agent log
+  fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
+    body: JSON.stringify({
+      sessionId: '0d719b',
+      runId: 'post-fix',
+      hypothesisId: 'H1',
+      location: 'LiveTalkPage.tsx:mount',
+      message: 'LiveTalkPage render before useConversation',
+      data: { hasVoiceId: Boolean(voiceId) },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  // #endregion
+
   const { user } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +77,22 @@ export function LiveTalkPage({ voiceId, onBack }: Props) {
       if (status.status === 'disconnected') setOrbState('idle')
     },
   })
+
+  // #region agent log
+  fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
+    body: JSON.stringify({
+      sessionId: '0d719b',
+      runId: 'post-fix',
+      hypothesisId: 'H1',
+      location: 'LiveTalkPage.tsx:afterHook',
+      message: 'useConversation initialized',
+      data: { status: conversation.status },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  // #endregion
 
   useEffect(() => {
     syncOrb(conversation.status, conversation.isSpeaking)

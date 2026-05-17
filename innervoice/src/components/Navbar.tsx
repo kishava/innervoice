@@ -66,6 +66,23 @@ export function Navbar({ step, hasHistory, hasVoice = false, onNavigate, onOpenH
   const optionsRef = useRef<HTMLDivElement | null>(null)
 
   const go = (next: AppStep) => {
+    if (next === 'live') {
+      // #region agent log
+      fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
+        body: JSON.stringify({
+          sessionId: '0d719b',
+          runId: 'pre-fix',
+          hypothesisId: 'H2',
+          location: 'Navbar.tsx:go',
+          message: 'Navbar Talk clicked',
+          data: { voiceReady, step },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+    }
     onNavigate(next)
     setMobileMenuOpen(false)
   }
