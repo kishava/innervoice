@@ -14,6 +14,22 @@ type ChatRequest = {
   messages: Array<{ role: string; content: string }>
 }
 
+type AuthContext = {
+  authorization: string
+  userId: string
+}
+
+const DEFAULT_VOICE_IDS = new Set([
+  '21m00Tcm4TlvDq8ikWAM',
+  'pNInz6obpgDQGcFmaJgB',
+  'EXAVITQu4vr4xnSDxMaL',
+  'ErXwobaYiN019PkySvjV',
+  'TxGEqnHWrfWFTfGW9XjX',
+  'MF3mGyEYCl7XYWbV9V6O',
+  'yoZ06aMxZJJ28mfd3POQ',
+  'AZnzlk1XvdvUeBnXmlld',
+])
+
 function json<T>(status: number, body: GatewayResult<T>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -46,6 +62,83 @@ async function readErrorText(response: Response) {
   } catch {
     return response.statusText
   }
+}
+
+function supabaseEnv() {
+  const url = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!url || !anonKey) throw new Error('Supabase function auth is not configured.')
+  return { url, anonKey }
+}
+
+async function requireAuthenticatedUser(request: Request): Promise<AuthContext> {
+  const authorization = request.headers.get('Authorization') ?? ''
+  if (!authorization.toLowerCase().startsWith('bearer ')) {
+    throw new Error('Sign in before using the backend gateway.')
+  }
+
+  const { url, anonKey } = supabaseEnv()
+  const response = await fetch(`${url}/auth/v1/user`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: authorization,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Your session expired. Sign in again.')
+  }
+
+  const user = (await response.json()) as { id?: string }
+  if (!user.id) throw new Error('Your session expired. Sign in again.')
+  return { authorization, userId: user.id }
+}
+
+async function fetchSupabaseRows<T>(auth: AuthContext, table: string, params: URLSearchParams): Promise<T[]> {
+  const { url, anonKey } = supabaseEnv()
+  const response = await fetch(`${url}/rest/v1/${table}?${params.toString()}`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: auth.authorization,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Could not verify voice ownership (${response.status}): ${await readErrorText(response)}`)
+  }
+
+  return (await response.json()) as T[]
+}
+
+async function userOwnsVoice(auth: AuthContext, voiceId: string): Promise<boolean> {
+  const profileParams = new URLSearchParams({
+    select: 'id',
+    id: `eq.${auth.userId}`,
+    voice_id: `eq.${voiceId}`,
+    limit: '1',
+  })
+  const profileRows = await fetchSupabaseRows<{ id: string }>(auth, 'profiles', profileParams)
+  if (profileRows.length > 0) return true
+
+  const voiceParams = new URLSearchParams({
+    select: 'id',
+    user_id: `eq.${auth.userId}`,
+    elevenlabs_voice_id: `eq.${voiceId}`,
+    limit: '1',
+  })
+  const voiceRows = await fetchSupabaseRows<{ id: string }>(auth, 'user_voices', voiceParams)
+  return voiceRows.length > 0
+}
+
+async function assertVoiceAllowed(auth: AuthContext, voiceId: string, allowDefault: boolean) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('voiceId is required.')
+  if (DEFAULT_VOICE_IDS.has(id)) {
+    if (allowDefault) return
+    throw new Error('Default voices cannot be deleted.')
+  }
+  if (await userOwnsVoice(auth, id)) return
+  throw new Error('You can only use voices saved to your account.')
 }
 
 async function chatCompletion(request: ChatRequest) {
@@ -96,12 +189,13 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
   return { voiceId: data.voice_id as string }
 }
 
-async function deleteVoice(payload: { voiceId: string }) {
+async function deleteVoice(payload: { voiceId: string }, auth: AuthContext) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
 
   const voiceId = String(payload.voiceId ?? '').trim()
   if (!voiceId) throw new Error('voiceId is required.')
+  await assertVoiceAllowed(auth, voiceId, false)
 
   const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
     method: 'DELETE',
@@ -164,9 +258,10 @@ async function textToSpeech(payload: {
   outputFormat: string
   realtime: boolean
   emotion?: string
-}) {
+}, auth: AuthContext) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+  await assertVoiceAllowed(auth, payload.voiceId, true)
 
   const headers = {
     'Content-Type': 'application/json',
@@ -327,32 +422,7 @@ async function assertVoiceExists(voiceId: string, key: string) {
   }
 }
 
-/** Point the ConvAI agent at the user's cloned voice (do not change TTS model — agent language rules apply). */
-async function setAgentTrainedVoice(agentId: string, voiceId: string, key: string) {
-  const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
-    method: 'PATCH',
-    headers: {
-      'xi-api-key': key,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      conversation_config: {
-        tts: {
-          voice_id: voiceId,
-        },
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const detail = await readErrorText(response)
-    throw new Error(
-      `Could not set your voice on the live-talk agent (${response.status}): ${detail.slice(0, 280)}`,
-    )
-  }
-}
-
-/** Allow prompt / first-message overrides from the app (voice comes from agent config above). */
+/** Allow per-session prompt / first-message / voice overrides from the app. */
 async function ensureLivePromptOverrides(agentId: string, key: string) {
   const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
     method: 'PATCH',
@@ -369,6 +439,9 @@ async function ensureLivePromptOverrides(agentId: string, key: string) {
               language: true,
               prompt: { prompt: true },
             },
+            tts: {
+              voice_id: true,
+            },
           },
         },
       },
@@ -383,7 +456,7 @@ async function ensureLivePromptOverrides(agentId: string, key: string) {
   }
 }
 
-async function getConversationToken(payload: { voiceId?: string }) {
+async function getConversationToken(payload: { voiceId?: string }, auth: AuthContext) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   const agentId = Deno.env.get('ELEVENLABS_AGENT_ID')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
@@ -398,8 +471,8 @@ async function getConversationToken(payload: { voiceId?: string }) {
     throw new Error('voiceId is required for live talk.')
   }
 
+  await assertVoiceAllowed(auth, voiceId, true)
   await assertVoiceExists(voiceId, key)
-  await setAgentTrainedVoice(agentId, voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
 
   const response = await fetch(
@@ -428,14 +501,17 @@ Deno.serve(async (request) => {
 
     switch (action) {
       case 'chatCompletion': {
+        await requireAuthenticatedUser(request)
         const data = await chatCompletion(payload.request as ChatRequest)
         return json(200, { ok: true, data })
       }
       case 'cloneVoice': {
+        await requireAuthenticatedUser(request)
         const data = await cloneVoice(payload as { name: string; audioBase64: string; mimeType: string })
         return json(200, { ok: true, data })
       }
       case 'textToSpeech': {
+        const auth = await requireAuthenticatedUser(request)
         const data = await textToSpeech(
           payload as {
             text: string
@@ -446,21 +522,25 @@ Deno.serve(async (request) => {
             realtime: boolean
             emotion?: string
           },
+          auth,
         )
         return json(200, { ok: true, data })
       }
       case 'transcribeAudio': {
+        await requireAuthenticatedUser(request)
         const data = await transcribeAudio(
           payload as { audioBase64: string; mimeType: string; whisperOnly?: boolean },
         )
         return json(200, { ok: true, data })
       }
       case 'getConversationToken': {
-        const data = await getConversationToken(payload as { voiceId?: string })
+        const auth = await requireAuthenticatedUser(request)
+        const data = await getConversationToken(payload as { voiceId?: string }, auth)
         return json(200, { ok: true, data })
       }
       case 'deleteVoice': {
-        const data = await deleteVoice(payload as { voiceId: string })
+        const auth = await requireAuthenticatedUser(request)
+        const data = await deleteVoice(payload as { voiceId: string }, auth)
         return json(200, { ok: true, data })
       }
       default:

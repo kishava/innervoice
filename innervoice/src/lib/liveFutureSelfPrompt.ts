@@ -11,8 +11,8 @@ export function liveFutureSelfFirstMessage(userName?: string) {
   return futureSelfLiveGreetingFallback(userName)
 }
 
-/** Live talk: voice is set on the ElevenLabs agent; personality matches chat via shared persona. */
-export function buildLiveConversationOverrides(userName?: string, firstMessage?: string) {
+/** Live talk uses per-session overrides so concurrent callers don't mutate the shared agent. */
+export function buildLiveConversationOverrides(userName?: string, firstMessage?: string, voiceId?: string) {
   return {
     agent: {
       prompt: {
@@ -21,5 +21,6 @@ export function buildLiveConversationOverrides(userName?: string, firstMessage?:
       firstMessage: firstMessage?.trim() || liveFutureSelfFirstMessage(userName),
       language: 'en' as const,
     },
+    tts: voiceId ? { voiceId } : undefined,
   }
 }
