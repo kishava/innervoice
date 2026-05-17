@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { textToSpeech } from '../api/elevenlabs'
+import { getLastTtsBackend, textToSpeech } from '../api/elevenlabs'
 import { splitStoryIntoChunks } from '../lib/storyChunks'
 import type { Emotion } from '../types'
 
@@ -18,6 +18,7 @@ export function useStoryPlayback(
   const [chunks, setChunks] = useState<string[]>([])
   const [chunkIndex, setChunkIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [ttsNotice, setTtsNotice] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const blobUrlRef = useRef<string | null>(null)
@@ -48,6 +49,7 @@ export function useStoryPlayback(
     setChunkIndex(0)
     setChunks([])
     setError(null)
+    setTtsNotice(null)
   }, [clearAudio])
 
   const pause = useCallback(() => {
@@ -75,6 +77,12 @@ export function useStoryPlayback(
       if (cached) return cached
       const blob = await textToSpeech(parts[index], voiceId!, emotion)
       if (runIdRef.current !== runId || abortedRef.current) return null
+      const backend = getLastTtsBackend()
+      if (backend === 'speech_v2_fallback') {
+        setTtsNotice('Eleven v3 is unavailable right now — reading with v2 and your cloned voice.')
+      } else if (backend === 'dialogue_v3' || backend === 'speech_v3') {
+        setTtsNotice(null)
+      }
       prefetchRef.current.set(index, blob)
       return blob
     },
@@ -137,6 +145,7 @@ export function useStoryPlayback(
       setChunks(parts)
       setChunkIndex(0)
       setError(null)
+      setTtsNotice(null)
       setStatus('preparing')
 
       try {
@@ -197,6 +206,7 @@ export function useStoryPlayback(
     chunks,
     chunkIndex,
     error,
+    ttsNotice,
     isActive,
     start,
     stop,

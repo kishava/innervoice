@@ -6,10 +6,14 @@ import { useAudioOrb } from '../contexts/AudioOrbContext'
 import { useStoryPlayback } from '../hooks/useStoryPlayback'
 import { readStoryFile, STORY_FILE_ACCEPT } from '../lib/readStoryFile'
 import { STORY_SCRIPT_MAX_CHARS, splitStoryIntoChunks } from '../lib/storyChunks'
-import type { Emotion } from '../types'
+import type { Emotion, UserVoice } from '../types'
+import { VoicePicker } from './VoicePicker'
 
 interface Props {
   voiceId: string | null
+  voices?: UserVoice[]
+  onSelectVoice?: (elevenlabsVoiceId: string) => void
+  onManageVoices?: () => void
   onBack: () => void
 }
 
@@ -46,17 +50,21 @@ function statusLabel(status: string, chunkIndex: number, total: number): string 
   }
 }
 
-export function StoryReaderView({ voiceId, onBack }: Props) {
+export function StoryReaderView({
+  voiceId,
+  voices = [],
+  onSelectVoice,
+  onManageVoices,
+  onBack,
+}: Props) {
   const [script, setScript] = useState('')
   const [emotion, setEmotion] = useState<Emotion>('neutral')
   const [uploadName, setUploadName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const { connect, setOrbState } = useAudioOrb()
-  const { status, chunks, chunkIndex, error, isActive, start, stop, pause, resume } = useStoryPlayback(
-    voiceId,
-    connect,
-  )
+  const { status, chunks, chunkIndex, error, ttsNotice, isActive, start, stop, pause, resume } =
+    useStoryPlayback(voiceId, connect)
 
   useEffect(() => {
     if (status === 'preparing') setOrbState('processing')
@@ -111,8 +119,8 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
             Story Reader
           </p>
           <p className="mt-1 max-w-xl text-xs text-text-tertiary">
-            Upload a script (.txt, .md, .pdf, .docx) or paste text — your cloned voice narrates it in parts, with
-            natural pauses between paragraphs.
+            Upload a script (.txt, .md, .pdf, .docx) or paste text — choose a trained voice; your clone uses
+            Eleven v3 (v2 fallback if needed) for narration.
           </p>
         </div>
         <button
@@ -209,6 +217,22 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
             />
           </div>
 
+          {voices.length > 0 && onSelectVoice && (
+            <div className="space-y-1">
+              <p className="text-xs text-text-tertiary">Narration voice</p>
+              <VoicePicker
+                voices={voices}
+                activeVoiceId={voiceId}
+                onSelect={(id) => {
+                  if (id !== voiceId) stop()
+                  onSelectVoice(id)
+                }}
+                onManage={onManageVoices}
+                disabled={isActive}
+              />
+            </div>
+          )}
+
           <label className="text-xs text-text-tertiary">
             Narration mood
             <select
@@ -235,6 +259,12 @@ export function StoryReaderView({ voiceId, onBack }: Props) {
           <p className="text-center text-sm text-text-secondary">
             {statusLabel(status, chunkIndex, chunks.length || previewChunks.length)}
           </p>
+
+          {ttsNotice && (
+            <p className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-100">
+              {ttsNotice}
+            </p>
+          )}
 
           {error && (
             <p className="rounded-lg border border-danger/40 bg-danger-soft px-2 py-1.5 text-xs text-danger">

@@ -462,7 +462,13 @@ export default function App() {
             />
           )}
           {step === 'story' && (
-            <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
+            <StoryReaderView
+              voiceId={voiceId}
+              voices={voices}
+              onSelectVoice={selectVoice}
+              onManageVoices={() => navigate('voices')}
+              onBack={() => navigate('chat')}
+            />
           )}
           {step === 'live' && (
             <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />

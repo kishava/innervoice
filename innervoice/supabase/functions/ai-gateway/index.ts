@@ -309,8 +309,26 @@ async function transcribeAudio(payload: {
   throw new Error('No transcription provider configured. Set OPENAI_API_KEY or ELEVENLABS_API_KEY.')
 }
 
-/** ElevenLabs rejects client overrides unless enabled on the agent (Security tab). */
-async function ensureLiveAgentOverrides(agentId: string, key: string) {
+async function assertVoiceExists(voiceId: string, key: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('A trained voice is required for live talk.')
+
+  const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(id)}`, {
+    headers: { 'xi-api-key': key },
+  })
+
+  if (response.status === 404) {
+    throw new Error(
+      'This voice ID is not in your ElevenLabs account. Open My voices, select a current voice, or train a new one.',
+    )
+  }
+  if (!response.ok) {
+    throw new Error(`Could not verify voice (${response.status}): ${await readErrorText(response)}`)
+  }
+}
+
+/** Sync agent default TTS voice + allow session overrides (cloned voices use turbo family). */
+async function prepareAgentForLiveCall(agentId: string, voiceId: string, key: string) {
   const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
     method: 'PATCH',
     headers: {
@@ -318,6 +336,12 @@ async function ensureLiveAgentOverrides(agentId: string, key: string) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      conversation_config: {
+        tts: {
+          voice_id: voiceId,
+          model_id: 'eleven_turbo_v2_5',
+        },
+      },
       platform_settings: {
         overrides: {
           conversation_config_override: {
@@ -334,14 +358,14 @@ async function ensureLiveAgentOverrides(agentId: string, key: string) {
   })
 
   if (!response.ok) {
-    const detail = await response.text()
+    const detail = await readErrorText(response)
     throw new Error(
-      `Could not enable live voice overrides on your ElevenLabs agent (${response.status}). In the agent Security tab, allow overrides for prompt, first message, language, and voice — or check the API key. ${detail.slice(0, 200)}`,
+      `Could not prepare live-talk agent (${response.status}). In ElevenLabs → Agent → Security, allow voice and prompt overrides. ${detail.slice(0, 220)}`,
     )
   }
 }
 
-async function getConversationToken() {
+async function getConversationToken(payload: { voiceId?: string }) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   const agentId = Deno.env.get('ELEVENLABS_AGENT_ID')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
@@ -351,7 +375,13 @@ async function getConversationToken() {
     )
   }
 
-  await ensureLiveAgentOverrides(agentId, key)
+  const voiceId = String(payload?.voiceId ?? '').trim()
+  if (!voiceId) {
+    throw new Error('voiceId is required for live talk.')
+  }
+
+  await assertVoiceExists(voiceId, key)
+  await prepareAgentForLiveCall(agentId, voiceId, key)
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
@@ -359,7 +389,7 @@ async function getConversationToken() {
   )
 
   if (!response.ok) {
-    const detail = await response.text()
+    const detail = await readErrorText(response)
     throw new Error(`ElevenLabs conversation token failed (${response.status}): ${detail}`)
   }
 
@@ -407,7 +437,7 @@ Deno.serve(async (request) => {
         return json(200, { ok: true, data })
       }
       case 'getConversationToken': {
-        const data = await getConversationToken()
+        const data = await getConversationToken(payload as { voiceId?: string })
         return json(200, { ok: true, data })
       }
       case 'deleteVoice': {

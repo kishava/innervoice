@@ -20,11 +20,21 @@ type ConnectWaiter = {
 
 function disconnectMessage(details?: DisconnectionDetails): string | null {
   if (!details) return null
+  if (details.reason === 'user') return null
   if (details.reason === 'error' && 'message' in details && typeof details.message === 'string') {
     return details.message
   }
   if (details.reason === 'agent' && 'context' in details && typeof details.context === 'string') {
     return details.context
+  }
+  if ('message' in details && typeof details.message === 'string' && details.message.trim()) {
+    return details.message
+  }
+  try {
+    const raw = JSON.stringify(details)
+    if (raw && raw !== '{}' && raw.length > 2) return raw.slice(0, 280)
+  } catch {
+    /* ignore */
   }
   return null
 }
@@ -47,6 +57,7 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
   const connectWaitRef = useRef<ConnectWaiter | null>(null)
   const endingRef = useRef(false)
   const hadConnectedRef = useRef(false)
+  const lastDebugRef = useRef<string | null>(null)
 
   const syncOrb = useCallback(
     (status: string, speaking: boolean) => {
@@ -75,11 +86,11 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       setConnecting(false)
       setOrbState('idle')
       if (!endingRef.current && hadConnectedRef.current) {
-        const detail = disconnectMessage(details)
-        setError(
-          detail ??
-            'Call ended unexpectedly. If this keeps happening, check that your cloned voice ID is valid in ElevenLabs.',
-        )
+        const detail =
+          disconnectMessage(details) ??
+          lastDebugRef.current ??
+          'Call ended unexpectedly. Try My voices to pick a valid clone, or train a new voice.'
+        setError(detail)
       }
       hadConnectedRef.current = false
     },
@@ -100,12 +111,29 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       if (status.status === 'connected') {
         setInCall(true)
         setError(null)
+        lastDebugRef.current = null
         connectWaitRef.current?.resolve()
         connectWaitRef.current = null
       }
       if (status.status === 'disconnected') {
         setInCall(false)
         setConnecting(false)
+      }
+    },
+    onDebug: (info) => {
+      if (import.meta.env.DEV) console.debug('[LiveTalk]', info)
+      if (typeof info === 'string' && info.trim()) {
+        lastDebugRef.current = info.trim().slice(0, 280)
+        return
+      }
+      if (info && typeof info === 'object') {
+        const msg =
+          'message' in info && typeof info.message === 'string'
+            ? info.message
+            : 'error' in info && typeof info.error === 'string'
+              ? info.error
+              : null
+        if (msg) lastDebugRef.current = msg.slice(0, 280)
       }
     },
   })
@@ -164,7 +192,7 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
         await new Promise((r) => window.setTimeout(r, 300))
       }
 
-      const token = await fetchConversationToken()
+      const token = await fetchConversationToken(voiceId)
       const overrides = buildLiveConversationOverrides(voiceId, user?.name)
       const waitForConnected = waitUntilConnected()
 
