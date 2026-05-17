@@ -18,24 +18,51 @@ type ConnectWaiter = {
   reject: (error: Error) => void
 }
 
+const LIVE_CALL_ENDED_HINT =
+  'Call ended unexpectedly. Allow microphone access, confirm your voice in My voices, then try again.'
+
+function isOpaqueDisconnectContext(context: unknown): boolean {
+  if (!context || typeof context !== 'object') return false
+  const record = context as Record<string, unknown>
+  if ('isTrusted' in record && typeof record.isTrusted === 'boolean') return true
+  if (record.type === 'error' && record.target != null) return true
+  return false
+}
+
+function messageFromUnknownContext(context: unknown): string | null {
+  if (typeof context === 'string') {
+    const trimmed = context.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  if (!context || typeof context !== 'object') return null
+  if (isOpaqueDisconnectContext(context)) return null
+  const record = context as Record<string, unknown>
+  for (const key of ['message', 'error', 'detail', 'reason'] as const) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
+}
+
 function disconnectMessage(details?: DisconnectionDetails): string | null {
   if (!details) return null
   if (details.reason === 'user') return null
-  if (details.reason === 'error' && 'message' in details && typeof details.message === 'string') {
-    return details.message
+
+  if ('message' in details && typeof details.message === 'string') {
+    const msg = details.message.trim()
+    if (msg) return msg
   }
-  if (details.reason === 'agent' && 'context' in details && typeof details.context === 'string') {
-    return details.context
+
+  if (details.reason === 'agent') {
+    const fromContext =
+      'context' in details ? messageFromUnknownContext(details.context) : null
+    return fromContext
   }
-  if ('message' in details && typeof details.message === 'string' && details.message.trim()) {
-    return details.message
+
+  if (details.reason === 'error') {
+    return 'Live call ended due to a connection error.'
   }
-  try {
-    const raw = JSON.stringify(details)
-    if (raw && raw !== '{}' && raw.length > 2) return raw.slice(0, 280)
-  } catch {
-    /* ignore */
-  }
+
   return null
 }
 
@@ -86,10 +113,7 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       setConnecting(false)
       setOrbState('idle')
       if (!endingRef.current && hadConnectedRef.current) {
-        const detail =
-          disconnectMessage(details) ??
-          lastDebugRef.current ??
-          'Call ended unexpectedly. Try My voices to pick a valid clone, or train a new voice.'
+        const detail = disconnectMessage(details) ?? lastDebugRef.current ?? LIVE_CALL_ENDED_HINT
         setError(detail)
       }
       hadConnectedRef.current = false
