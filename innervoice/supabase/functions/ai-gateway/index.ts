@@ -290,6 +290,38 @@ async function transcribeAudio(payload: {
   throw new Error('No transcription provider configured. Set OPENAI_API_KEY or ELEVENLABS_API_KEY.')
 }
 
+/** ElevenLabs rejects client overrides unless enabled on the agent (Security tab). */
+async function ensureLiveAgentOverrides(agentId: string, key: string) {
+  const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PATCH',
+    headers: {
+      'xi-api-key': key,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      platform_settings: {
+        overrides: {
+          conversation_config_override: {
+            agent: {
+              first_message: true,
+              language: true,
+              prompt: { prompt: true },
+            },
+            tts: { voice_id: true },
+          },
+        },
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(
+      `Could not enable live voice overrides on your ElevenLabs agent (${response.status}). In the agent Security tab, allow overrides for prompt, first message, language, and voice — or check the API key. ${detail.slice(0, 200)}`,
+    )
+  }
+}
+
 async function getConversationToken() {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   const agentId = Deno.env.get('ELEVENLABS_AGENT_ID')
@@ -299,6 +331,8 @@ async function getConversationToken() {
       'ELEVENLABS_AGENT_ID is not configured. Create a Conversational AI agent in ElevenLabs and add its ID to Supabase secrets.',
     )
   }
+
+  await ensureLiveAgentOverrides(agentId, key)
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,

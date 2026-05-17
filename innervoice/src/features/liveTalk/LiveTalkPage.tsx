@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConversationProvider, useConversation } from '@elevenlabs/react'
+import type { DisconnectionDetails } from '@elevenlabs/client'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { fetchConversationToken } from '../../api/liveConversation'
 import { useAuth } from '../../AuthContext'
@@ -17,21 +18,27 @@ type ConnectWaiter = {
   reject: (error: Error) => void
 }
 
-export function LiveTalkPage({ voiceId, onBack }: Props) {
-  const { user } = useAuth()
-  const overrides = useMemo(
-    () => (voiceId ? buildLiveConversationOverrides(voiceId, user?.name) : undefined),
-    [voiceId, user?.name],
-  )
+function disconnectMessage(details?: DisconnectionDetails): string | null {
+  if (!details) return null
+  if (details.reason === 'error' && 'message' in details && typeof details.message === 'string') {
+    return details.message
+  }
+  if (details.reason === 'agent' && 'context' in details && typeof details.context === 'string') {
+    return details.context
+  }
+  return null
+}
 
+export function LiveTalkPage({ voiceId, onBack }: Props) {
   return (
-    <ConversationProvider overrides={overrides}>
+    <ConversationProvider>
       <LiveTalkPageInner voiceId={voiceId} onBack={onBack} />
     </ConversationProvider>
   )
 }
 
 function LiveTalkPageInner({ voiceId, onBack }: Props) {
+  const { user } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -63,12 +70,16 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       setInCall(true)
       hadConnectedRef.current = true
     },
-    onDisconnect: () => {
+    onDisconnect: (details) => {
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
       if (!endingRef.current && hadConnectedRef.current) {
-        setError((prev) => prev ?? 'Call ended unexpectedly. Tap Start call to try again.')
+        const detail = disconnectMessage(details)
+        setError(
+          detail ??
+            'Call ended unexpectedly. If this keeps happening, check that your cloned voice ID is valid in ElevenLabs.',
+        )
       }
       hadConnectedRef.current = false
     },
@@ -154,17 +165,15 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       }
 
       const token = await fetchConversationToken()
+      const overrides = buildLiveConversationOverrides(voiceId, user?.name)
       const waitForConnected = waitUntilConnected()
 
       conversation.startSession({
         conversationToken: token,
         connectionType: 'webrtc',
+        overrides,
+        dynamicVariables: user?.name ? { user_name: user.name } : undefined,
       })
-
-      await new Promise((r) => window.setTimeout(r, 400))
-      if (conversation.status === 'disconnected' && !connectWaitRef.current) {
-        throw new Error('Could not start the live session. Tap Start call to try again.')
-      }
 
       await waitForConnected
       setInCall(true)
@@ -173,6 +182,11 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       setInCall(false)
       setOrbState('idle')
       connectWaitRef.current = null
+      try {
+        conversation.endSession()
+      } catch {
+        /* ignore */
+      }
     } finally {
       setConnecting(false)
     }
@@ -190,6 +204,7 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
     setConnecting(false)
     setOrbState('idle')
     endingRef.current = false
+    hadConnectedRef.current = false
   }
 
   const toggleMute = () => {
