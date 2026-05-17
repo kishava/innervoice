@@ -83,7 +83,7 @@ async function revealAssistantMessage(
 }
 
 export default function App() {
-  const { user, userId, isAuthenticated, setUserVoiceId } = useAuth()
+  const { user, userId, isAuthenticated, postAuthStep, clearPostAuthStep, setUserVoiceId } = useAuth()
   const voiceId = user?.voiceId ?? null
 
   const {
@@ -129,15 +129,19 @@ export default function App() {
     [setUserVoiceId],
   )
 
-  // Sync step with auth/voice state when those external values change.
+  // After auth: new registrations → train voice; login → chat.
   useEffect(() => {
     if (!isAuthenticated) {
       setStep('auth')
       setMessages([])
       return
     }
-    setStep((current) => (current === 'auth' || current === 'home' ? 'chat' : current))
-  }, [isAuthenticated, voiceId])
+    setStep((current) => {
+      if (current !== 'auth' && current !== 'home') return current
+      return postAuthStep === 'recording' ? 'recording' : 'chat'
+    })
+    if (postAuthStep) clearPostAuthStep()
+  }, [clearPostAuthStep, isAuthenticated, postAuthStep])
 
   useEffect(() => {
     if (voiceId && messages.length > 0) {

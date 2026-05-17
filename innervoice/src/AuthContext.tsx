@@ -15,10 +15,15 @@ export interface PublicUser {
   createdAt: number
 }
 
+export type PostAuthStep = 'recording' | 'chat'
+
 interface AuthContextValue {
   user: PublicUser | null
   userId: string | null
   isAuthenticated: boolean
+  /** Set after register/login; App reads once to pick recording vs chat. */
+  postAuthStep: PostAuthStep | null
+  clearPostAuthStep: () => void
   register: (input: { name: string; email: string; password: string; bio?: string }) => Promise<void>
   login: (input: { email: string; password: string }) => Promise<void>
   logout: () => void
@@ -134,6 +139,11 @@ async function getOrCreateProfile(
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(() => readSession())
   const [userId, setUserId] = useState<string | null>(null)
+  const [postAuthStep, setPostAuthStep] = useState<PostAuthStep | null>(null)
+
+  const clearPostAuthStep = useCallback(() => {
+    setPostAuthStep(null)
+  }, [])
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
@@ -213,6 +223,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       writeSession(profile)
+      setUserId(authUser.id)
+      setPostAuthStep('recording')
       setUser(profile)
     },
     [],
@@ -235,6 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const profile = await getOrCreateProfile(authUser.id, normalizedEmail)
     writeSession(profile)
+    setUserId(authUser.id)
+    setPostAuthStep('chat')
     setUser(profile)
   }, [])
 
@@ -244,6 +258,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     writeSession(null)
     setUser(null)
+    setUserId(null)
+    setPostAuthStep(null)
   }, [])
 
   const setUserVoiceId = useCallback((voiceId: string | null) => {
@@ -324,13 +340,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       userId,
       isAuthenticated: Boolean(user),
+      postAuthStep,
+      clearPostAuthStep,
       register,
       login,
       logout,
       setUserVoiceId,
       updateProfile,
     }),
-    [login, logout, register, setUserVoiceId, updateProfile, user, userId],
+    [clearPostAuthStep, login, logout, postAuthStep, register, setUserVoiceId, updateProfile, user, userId],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
