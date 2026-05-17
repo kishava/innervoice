@@ -5,6 +5,10 @@ import type { UserVoice } from '../types'
 
 interface Props {
   voices: UserVoice[]
+  loading?: boolean
+  loadError?: string | null
+  maxVoices?: number
+  canAddVoice?: boolean
   activeVoiceId: string | null
   onSelect: (elevenlabsVoiceId: string) => void
   onRename: (id: string, name: string) => Promise<void>
@@ -15,6 +19,10 @@ interface Props {
 
 export function VoicesView({
   voices,
+  loading = false,
+  loadError = null,
+  maxVoices = 2,
+  canAddVoice = true,
   activeVoiceId,
   onSelect,
   onRename,
@@ -74,7 +82,8 @@ export function VoicesView({
             My voices
           </h2>
           <p className="mt-1 max-w-md text-sm text-text-secondary">
-            Trained voices for chat, story, and live talk. Pick one to speak as your future self.
+            Trained voices for chat, story, and live talk. Up to {maxVoices} per account; inactive accounts lose
+            voices after 1 week.
           </p>
         </div>
         <button
@@ -86,20 +95,27 @@ export function VoicesView({
         </button>
       </div>
 
-      {error && (
-        <p className="rounded-xl border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
+      {(error || loadError) && (
+        <p className="rounded-xl border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error ?? loadError}
+        </p>
       )}
 
       <button
         type="button"
         onClick={onTrainNew}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-accent/50 bg-accent-soft/30 px-4 py-3 text-sm font-medium text-text-primary transition hover:border-accent hover:bg-accent-soft/50"
+        disabled={!canAddVoice || loading}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-accent/50 bg-accent-soft/30 px-4 py-3 text-sm font-medium text-text-primary transition hover:border-accent hover:bg-accent-soft/50 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Plus size={16} />
-        Train a new voice
+        {canAddVoice ? 'Train a new voice' : `Voice limit reached (${maxVoices}/${maxVoices})`}
       </button>
 
-      {voices.length === 0 ? (
+      {loading ? (
+        <p className="rounded-2xl border border-border/80 bg-elevated/60 px-4 py-6 text-center text-sm text-text-secondary">
+          Loading voices…
+        </p>
+      ) : voices.length === 0 ? (
         <p className="rounded-2xl border border-border/80 bg-elevated/60 px-4 py-6 text-center text-sm text-text-secondary">
           No voices yet. Train your first voice to start chatting.
         </p>

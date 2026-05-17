@@ -4,7 +4,8 @@ import { Sparkles } from 'lucide-react'
 import { cloneVoice, getLastTtsBackend, stripAudioTags, textToSpeech } from './api/elevenlabs'
 import { detectEmotion, getFutureSelfResponse, getGreetingResponse } from './api/openai'
 import { useAuth } from './AuthContext'
-import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { voiceLimitMessage } from './lib/voicePolicy'
+import { isSupabaseConfigured } from './lib/supabase'
 import { useUserVoices } from './hooks/useUserVoices'
 import { VoicesView } from './components/VoicesView'
 import { AuthScreen } from './components/AuthScreen'
@@ -81,11 +82,20 @@ async function revealAssistantMessage(
 }
 
 export default function App() {
-  const { user, isAuthenticated, setUserVoiceId } = useAuth()
+  const { user, userId, isAuthenticated, setUserVoiceId } = useAuth()
   const voiceId = user?.voiceId ?? null
-  const [authUserId, setAuthUserId] = useState<string | null>(null)
 
-  const { voices, addVoice, renameVoice, deleteVoice } = useUserVoices(authUserId, voiceId)
+  const {
+    voices,
+    loading: voicesLoading,
+    error: voicesError,
+    canAddVoice,
+    maxVoices,
+    refreshVoices,
+    addVoice,
+    renameVoice,
+    deleteVoice,
+  } = useUserVoices(userId, voiceId)
   const hasTrainedVoice = Boolean(voiceId) || voices.length > 0
 
   const [step, setStep] = useState<AppStep>(() => pickInitialStep(isAuthenticated))
@@ -107,14 +117,6 @@ export default function App() {
 
   const hasBackend = isSupabaseConfigured
   const demoMode = !hasBackend
-
-  useEffect(() => {
-    if (!supabase || !isAuthenticated) {
-      setAuthUserId(null)
-      return
-    }
-    void supabase.auth.getUser().then(({ data }) => setAuthUserId(data.user?.id ?? null))
-  }, [isAuthenticated])
 
   const selectVoice = useCallback(
     (nextVoiceId: string) => {
@@ -391,12 +393,17 @@ export default function App() {
                   setError('Missing Supabase config. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.')
                   return
                 }
+                if (!canAddVoice) {
+                  setError(voiceLimitMessage(voices.length))
+                  return
+                }
                 setStep('cloning')
                 try {
                   const newVoiceId = await cloneVoice(blob, voiceName)
                   await addVoice(newVoiceId, voiceName)
                   setUserVoiceId(newVoiceId)
                   greetedFor.current = null
+                  await refreshVoices()
                   setStep('chat')
                 } catch (err) {
                   setStep('recording')
@@ -408,6 +415,10 @@ export default function App() {
           {step === 'voices' && (
             <VoicesView
               voices={voices}
+              loading={voicesLoading}
+              loadError={voicesError}
+              maxVoices={maxVoices}
+              canAddVoice={canAddVoice}
               activeVoiceId={voiceId}
               onSelect={(id) => {
                 selectVoice(id)
@@ -425,7 +436,13 @@ export default function App() {
                   else setUserVoiceId(null)
                 }
               }}
-              onTrainNew={() => navigate('recording')}
+              onTrainNew={() => {
+                if (!canAddVoice) {
+                  setError(voiceLimitMessage(voices.length))
+                  return
+                }
+                navigate('recording')
+              }}
               onBack={() => navigate('chat')}
             />
           )}

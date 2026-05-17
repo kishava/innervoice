@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { User } from '@supabase/supabase-js'
 import type { AvatarThemePalette } from './lib/avatarPalette'
+import { runVoiceLifecycle } from './api/voices'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 export interface PublicUser {
@@ -16,6 +17,7 @@ export interface PublicUser {
 
 interface AuthContextValue {
   user: PublicUser | null
+  userId: string | null
   isAuthenticated: boolean
   register: (input: { name: string; email: string; password: string; bio?: string }) => Promise<void>
   login: (input: { email: string; password: string }) => Promise<void>
@@ -131,6 +133,7 @@ async function getOrCreateProfile(
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(() => readSession())
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
@@ -140,16 +143,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const syncUser = async (authUser: User | null) => {
       if (!authUser) {
         writeSession(null)
-        if (!cancelled) setUser(null)
+        if (!cancelled) {
+          setUser(null)
+          setUserId(null)
+        }
         return
       }
 
+      if (!cancelled) setUserId(authUser.id)
+
       try {
+        const purged = await runVoiceLifecycle(authUser.id)
         const sessionSnapshot = readSession()
         const profile = await getOrCreateProfile(authUser.id, authUser.email ?? '', {
           name: sessionSnapshot?.name,
           bio: sessionSnapshot?.bio,
-          voiceId: sessionSnapshot?.voiceId ?? null,
+          voiceId: purged ? null : (sessionSnapshot?.voiceId ?? null),
         })
         writeSession(profile)
         if (!cancelled) setUser(profile)
@@ -313,6 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      userId,
       isAuthenticated: Boolean(user),
       register,
       login,
@@ -320,7 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUserVoiceId,
       updateProfile,
     }),
-    [login, logout, register, setUserVoiceId, updateProfile, user],
+    [login, logout, register, setUserVoiceId, updateProfile, user, userId],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

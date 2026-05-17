@@ -96,6 +96,25 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
   return { voiceId: data.voice_id as string }
 }
 
+async function deleteVoice(payload: { voiceId: string }) {
+  const key = Deno.env.get('ELEVENLABS_API_KEY')
+  if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+
+  const voiceId = String(payload.voiceId ?? '').trim()
+  if (!voiceId) throw new Error('voiceId is required.')
+
+  const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
+    method: 'DELETE',
+    headers: { 'xi-api-key': key },
+  })
+
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Voice delete failed (${response.status}): ${await readErrorText(response)}`)
+  }
+
+  return { deleted: true }
+}
+
 // Map our emotion taxonomy to ElevenLabs v2 voice_settings.
 // v2 doesn't support audio tags, so we make the voice emote via stability/style.
 // Lower stability + higher style = more emotional/expressive delivery.
@@ -389,6 +408,10 @@ Deno.serve(async (request) => {
       }
       case 'getConversationToken': {
         const data = await getConversationToken()
+        return json(200, { ok: true, data })
+      }
+      case 'deleteVoice': {
+        const data = await deleteVoice(payload as { voiceId: string })
         return json(200, { ok: true, data })
       }
       default:
