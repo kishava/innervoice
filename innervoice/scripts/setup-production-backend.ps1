@@ -1,5 +1,6 @@
 # One-time production setup: Supabase Edge Function secrets + ai-gateway deploy.
-# Requires: npx supabase login (or SUPABASE_ACCESS_TOKEN / .supabase-access-token)
+# Requires: SUPABASE_ACCESS_TOKEN (sbp_... from dashboard/account/tokens) OR npx supabase login
+# NOT the project secret key (sb_secret_...) - cannot set Edge Function secrets.
 # Secrets file: .env.supabase.secrets (gitignored)
 
 $ErrorActionPreference = 'Stop'
@@ -9,9 +10,10 @@ Set-Location $Root
 $ProjectRef = 'sfkjycsvkhkcxoabcyjo'
 $SecretsFile = Join-Path $Root '.env.supabase.secrets'
 $TokenFile = Join-Path $Root '.supabase-access-token'
+$DashboardSecretsUrl = "https://supabase.com/dashboard/project/$ProjectRef/functions/secrets"
 
 if (-not (Test-Path $SecretsFile)) {
-  Write-Error "Missing $SecretsFile — add OPENAI_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID"
+  Write-Error "Missing $SecretsFile"
 }
 
 if (-not $env:SUPABASE_ACCESS_TOKEN -and (Test-Path $TokenFile)) {
@@ -23,21 +25,6 @@ if (-not $env:SUPABASE_ACCESS_TOKEN) {
   if (Test-Path $cliToken) {
     $env:SUPABASE_ACCESS_TOKEN = (Get-Content $cliToken -Raw).Trim()
   }
-}
-
-if (-not $env:SUPABASE_ACCESS_TOKEN) {
-  Write-Host @"
-
-Supabase access token required (one-time):
-  1. Open https://supabase.com/dashboard/account/tokens
-  2. Create a token with Edge Functions + Secrets write access
-  3. Save it to: $TokenFile
-     OR run: `$env:SUPABASE_ACCESS_TOKEN = 'sbp_...'
-  4. Re-run: .\scripts\setup-production-backend.ps1
-
-Or run: npx supabase login
-"@ -ForegroundColor Yellow
-  exit 1
 }
 
 function Set-SecretsViaApi {
@@ -61,18 +48,46 @@ function Set-SecretsViaApi {
   } -Body $body
 }
 
+function Open-DashboardPasteFlow {
+  Write-Host ""
+  Write-Host "No valid CLI token (need sbp_... from https://supabase.com/dashboard/account/tokens)." -ForegroundColor Yellow
+  Write-Host "Opening Supabase secrets page - paste from clipboard and click Save:" -ForegroundColor Cyan
+  Write-Host "  $DashboardSecretsUrl"
+  Write-Host ""
+  Get-Content $SecretsFile | Set-Clipboard
+  Write-Host "Copied .env.supabase.secrets to clipboard (KEY=value lines)." -ForegroundColor Green
+  Start-Process $DashboardSecretsUrl
+}
+
+if (-not $env:SUPABASE_ACCESS_TOKEN) {
+  Open-DashboardPasteFlow
+  exit 0
+}
+
+if ($env:SUPABASE_ACCESS_TOKEN.StartsWith('sb_secret_')) {
+  Write-Host "sb_secret_* is a project API key, not a CLI token. Use sbp_* or the dashboard flow." -ForegroundColor Yellow
+  Open-DashboardPasteFlow
+  exit 0
+}
+
 Write-Host "Setting Edge Function secrets on project $ProjectRef ..."
 try {
   Set-SecretsViaApi -Token $env:SUPABASE_ACCESS_TOKEN -Ref $ProjectRef -EnvPath $SecretsFile
   Write-Host "Secrets set via Management API." -ForegroundColor Green
 } catch {
-  Write-Host "Management API failed ($($_.Exception.Message)); trying CLI ..."
+  Write-Host "Management API failed: $($_.Exception.Message)"
   npx supabase secrets set --env-file $SecretsFile --project-ref $ProjectRef
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  if ($LASTEXITCODE -ne 0) {
+    Open-DashboardPasteFlow
+    exit 1
+  }
 }
 
 Write-Host "Deploying ai-gateway ..."
 npx supabase functions deploy ai-gateway --project-ref $ProjectRef
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "Deploy failed (secrets may still be active). Check dashboard Edge Functions." -ForegroundColor Yellow
+  exit $LASTEXITCODE
+}
 
-Write-Host "Done. ElevenLabs/OpenAI are configured on Supabase (not Vercel)." -ForegroundColor Green
+Write-Host "Done. ElevenLabs/OpenAI are on Supabase Edge Function secrets." -ForegroundColor Green
