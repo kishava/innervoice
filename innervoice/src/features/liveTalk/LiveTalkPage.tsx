@@ -7,9 +7,14 @@ import { useAuth } from '../../AuthContext'
 import { useAudioOrb } from '../../contexts/AudioOrbContext'
 import { BreathingVoiceOrb } from '../../components/BreathingVoiceOrb'
 import { buildLiveConversationOverrides } from '../../lib/liveFutureSelfPrompt'
+import { VoicePicker } from '../../components/VoicePicker'
+import type { UserVoice } from '../../types'
 
 interface Props {
   voiceId: string | null
+  voices?: UserVoice[]
+  onSelectVoice?: (elevenlabsVoiceId: string) => void
+  onManageVoices?: () => void
   onBack: () => void
 }
 
@@ -66,15 +71,21 @@ function disconnectMessage(details?: DisconnectionDetails): string | null {
   return null
 }
 
-export function LiveTalkPage({ voiceId, onBack }: Props) {
+export function LiveTalkPage({ voiceId, voices, onSelectVoice, onManageVoices, onBack }: Props) {
   return (
     <ConversationProvider>
-      <LiveTalkPageInner voiceId={voiceId} onBack={onBack} />
+      <LiveTalkPageInner
+        voiceId={voiceId}
+        voices={voices}
+        onSelectVoice={onSelectVoice}
+        onManageVoices={onManageVoices}
+        onBack={onBack}
+      />
     </ConversationProvider>
   )
 }
 
-function LiveTalkPageInner({ voiceId, onBack }: Props) {
+function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onBack }: Props) {
   const { user } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
@@ -270,7 +281,7 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
         ? 'Future self is speaking…'
         : 'Listening — say what’s on your mind'
       : !voiceId
-        ? 'Choose a voice in My voices, then tap Start call'
+        ? 'Pick a voice below or in My voices, then tap Start call'
         : 'Tap Start call when you’re ready'
 
   return (
@@ -282,6 +293,25 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
             Live voice — your selected clone is applied on the ElevenLabs agent for this call.
           </p>
         </header>
+
+        {voices && voices.length > 0 && onSelectVoice && (
+          <section className="flex w-full flex-col items-center gap-2">
+            <p className="text-xs font-medium text-text-tertiary">Voice for this call</p>
+            <VoicePicker
+              voices={voices}
+              activeVoiceId={voiceId}
+              menuCentered
+              onSelect={(id) => {
+                if (id !== voiceId) {
+                  if (connected || busy) void end()
+                  onSelectVoice(id)
+                }
+              }}
+              onManage={onManageVoices}
+              disabled={busy || connected}
+            />
+          </section>
+        )}
 
         <div className="flex w-full shrink-0 justify-center py-2">
           <BreathingVoiceOrb

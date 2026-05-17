@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, Mic2 } from 'lucide-react'
+import { isDefaultVoiceEntry } from '../lib/defaultVoices'
 import type { UserVoice } from '../types'
 
 interface Props {
@@ -87,6 +88,9 @@ export function VoicePicker({
                 }`}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{voice.name}</span>
+                {isDefaultVoiceEntry(voice.id) && (
+                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-text-tertiary">Default</span>
+                )}
                 {selected && <Check size={14} className="shrink-0 text-accent" />}
               </button>
             )

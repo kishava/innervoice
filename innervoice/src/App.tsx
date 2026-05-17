@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react'
 import { cloneVoice, getLastTtsBackend, stripAudioTags, textToSpeech } from './api/elevenlabs'
 import { detectEmotion, getFutureSelfResponse, getGreetingResponse } from './api/openai'
 import { useAuth } from './AuthContext'
+import { defaultVoicesForMyVoicesPage, mergeVoicesForSelection } from './lib/defaultVoices'
 import { voiceLimitMessage } from './lib/voicePolicy'
 import { isSupabaseConfigured } from './lib/supabase'
 import { useUserVoices } from './hooks/useUserVoices'
@@ -93,11 +94,12 @@ export default function App() {
     maxVoices,
     refreshVoices,
     addVoice,
-    importVoice,
     renameVoice,
     deleteVoice,
   } = useUserVoices(userId, voiceId)
-  const hasTrainedVoice = Boolean(voiceId) || voices.length > 0
+  const voiceOptions = useMemo(() => mergeVoicesForSelection(voices), [voices])
+  const pageDefaultVoices = useMemo(() => defaultVoicesForMyVoicesPage(voices), [voices])
+  const hasTrainedVoice = Boolean(voiceId) || voices.length > 0 || voiceOptions.length > 0
 
   const [step, setStep] = useState<AppStep>(() => pickInitialStep(isAuthenticated))
   const [messages, setMessages] = useState<Message[]>([])
@@ -416,6 +418,7 @@ export default function App() {
           {step === 'voices' && (
             <VoicesView
               voices={voices}
+              defaultVoices={pageDefaultVoices}
               loading={voicesLoading}
               loadError={voicesError}
               maxVoices={maxVoices}
@@ -437,7 +440,6 @@ export default function App() {
                   else setUserVoiceId(null)
                 }
               }}
-              onImportVoice={importVoice}
               onTrainNew={() => {
                 if (!canAddVoice) {
                   setError(voiceLimitMessage(voices.length))
@@ -457,13 +459,29 @@ export default function App() {
               thinkingLabel={thinkingLabel}
               onSend={handleSendMessage}
               onOpenStory={() => navigate('story')}
+              voices={voiceOptions}
+              activeVoiceId={voiceId}
+              onSelectVoice={selectVoice}
+              onManageVoices={() => navigate('voices')}
             />
           )}
           {step === 'story' && (
-            <StoryReaderView voiceId={voiceId} onBack={() => navigate('chat')} />
+            <StoryReaderView
+              voiceId={voiceId}
+              voices={voiceOptions}
+              onSelectVoice={selectVoice}
+              onManageVoices={() => navigate('voices')}
+              onBack={() => navigate('chat')}
+            />
           )}
           {step === 'live' && (
-            <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />
+            <LiveTalkPage
+              voiceId={voiceId}
+              voices={voiceOptions}
+              onSelectVoice={selectVoice}
+              onManageVoices={() => navigate('voices')}
+              onBack={() => navigate('chat')}
+            />
           )}
         </motion.section>
 

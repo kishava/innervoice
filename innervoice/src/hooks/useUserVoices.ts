@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { deleteRemoteVoice } from '../api/voices'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isDefaultVoiceEntry } from '../lib/defaultVoices'
 import { MAX_VOICES_PER_USER, voiceLimitMessage } from '../lib/voicePolicy'
 import type { UserVoice } from '../types'
 
@@ -198,38 +199,14 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
     [saveVoiceRow, userId, voices],
   )
 
-  const importVoice = useCallback(
-    async (elevenlabsVoiceId: string, name: string) => {
-      if (!userId || !supabase) throw new Error('Sign in to save voices.')
-
-      const trimmed = name.trim()
-      if (!trimmed) throw new Error('Voice name cannot be empty.')
-
-      const { count, error: countError } = await supabase
-        .from('user_voices')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-
-      if (countError && !isMissingUserVoicesTable(countError)) throw countError
-
-      const existing = voices.find((v) => v.elevenlabsVoiceId === elevenlabsVoiceId)
-      if (!existing && (count ?? voices.length) >= MAX_VOICES_PER_USER) {
-        throw new Error(voiceLimitMessage(MAX_VOICES_PER_USER))
-      }
-
-      return saveVoiceRow(elevenlabsVoiceId, trimmed)
-    },
-    [saveVoiceRow, userId, voices],
-  )
-
   const renameVoice = useCallback(
     async (id: string, name: string) => {
       if (!userId || !supabase) throw new Error('Sign in to rename voices.')
       const trimmed = name.trim()
       if (!trimmed) throw new Error('Voice name cannot be empty.')
 
-      if (id === 'legacy') {
-        throw new Error('This voice is not saved yet. Open My voices after your library syncs.')
+      if (id === 'legacy' || isDefaultVoiceEntry(id)) {
+        throw new Error('This voice cannot be renamed here.')
       }
 
       const { data, error } = await supabase
@@ -282,7 +259,6 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
     maxVoices: MAX_VOICES_PER_USER,
     refreshVoices,
     addVoice,
-    importVoice,
     renameVoice,
     deleteVoice,
   }

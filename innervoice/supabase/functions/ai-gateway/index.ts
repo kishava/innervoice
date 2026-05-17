@@ -115,36 +115,6 @@ async function deleteVoice(payload: { voiceId: string }) {
   return { deleted: true }
 }
 
-async function listVoices() {
-  const key = Deno.env.get('ELEVENLABS_API_KEY')
-  if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
-
-  const response = await fetch('https://api.elevenlabs.io/v1/voices', {
-    headers: { 'xi-api-key': key },
-  })
-
-  if (!response.ok) {
-    throw new Error(`List voices failed (${response.status}): ${await readErrorText(response)}`)
-  }
-
-  const data = await response.json()
-  const raw = Array.isArray(data?.voices) ? data.voices : []
-  const voices = raw
-    .map((voice: { voice_id?: string; name?: string; category?: string }) => {
-      const voiceId = String(voice?.voice_id ?? '').trim()
-      const name = String(voice?.name ?? '').trim()
-      if (!voiceId || !name) return null
-      return {
-        voiceId,
-        name,
-        category: String(voice?.category ?? 'unknown').trim() || 'unknown',
-      }
-    })
-    .filter((v): v is { voiceId: string; name: string; category: string } => v !== null)
-
-  return { voices }
-}
-
 // Map our emotion taxonomy to ElevenLabs v2 voice_settings.
 // v2 doesn't support audio tags, so we make the voice emote via stability/style.
 // Lower stability + higher style = more emotional/expressive delivery.
@@ -491,10 +461,6 @@ Deno.serve(async (request) => {
       }
       case 'deleteVoice': {
         const data = await deleteVoice(payload as { voiceId: string })
-        return json(200, { ok: true, data })
-      }
-      case 'listVoices': {
-        const data = await listVoices()
         return json(200, { ok: true, data })
       }
       default:
