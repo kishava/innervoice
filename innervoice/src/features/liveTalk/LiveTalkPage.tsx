@@ -259,6 +259,24 @@ function LiveTalkPageInner({ voiceId, voices = [], onSelectVoice, onManageVoices
         </p>
       </div>
 
+      {voices.length > 0 && onSelectVoice && (
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-xs text-text-tertiary">Voice for this call</p>
+          <VoicePicker
+            voices={voices}
+            activeVoiceId={voiceId}
+            onSelect={(id) => {
+              if (id !== voiceId) {
+                if (connected || busy) void end()
+                onSelectVoice(id)
+              }
+            }}
+            onManage={onManageVoices}
+            disabled={busy}
+          />
+        </div>
+      )}
+
       <BreathingVoiceOrb
         state={
           busy

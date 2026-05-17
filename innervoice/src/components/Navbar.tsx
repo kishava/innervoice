@@ -155,7 +155,7 @@ export function Navbar({
               onManage={onManageVoices}
             />
           ) : null}
-        </motion.div>
+        </div>
 
         <div className="col-start-3 flex items-center justify-end gap-1.5 justify-self-end">
           <div className="hidden items-center gap-1.5 sm:flex">
