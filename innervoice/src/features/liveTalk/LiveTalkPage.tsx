@@ -77,17 +77,48 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
   const connected = conversation.status === 'connected'
   const busy = connecting || conversation.status === 'connecting'
 
+  useEffect(() => {
+    if (conversation.status === 'error' && conversation.message) {
+      setError(conversation.message)
+      setConnecting(false)
+      setOrbState('idle')
+    }
+  }, [conversation.message, conversation.status, setOrbState])
+
   const start = async () => {
     if (!voiceId || busy || connected) return
     setConnecting(true)
     setError(null)
     setOrbState('processing')
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true })
       const token = await fetchConversationToken()
-      await conversation.startSession({
-        conversationToken: token,
-        connectionType: 'webrtc',
+      await new Promise<void>((resolve, reject) => {
+        let settled = false
+        const timer = window.setTimeout(() => {
+          if (settled) return
+          settled = true
+          reject(new Error('Connection timed out. Allow microphone access and try again.'))
+        }, 60_000)
+
+        conversation.startSession({
+          conversationToken: token,
+          connectionType: 'webrtc',
+          onConnect: () => {
+            setError(null)
+            if (settled) return
+            settled = true
+            window.clearTimeout(timer)
+            resolve()
+          },
+          onError: (message) => {
+            const detail = typeof message === 'string' ? message : 'Live voice connection failed.'
+            setError(detail)
+            if (settled) return
+            settled = true
+            window.clearTimeout(timer)
+            reject(new Error(detail))
+          },
+        })
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start live call.')
