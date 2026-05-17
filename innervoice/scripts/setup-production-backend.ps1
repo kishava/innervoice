@@ -4,6 +4,7 @@
 # Secrets file: .env.supabase.secrets (gitignored)
 
 $ErrorActionPreference = 'Stop'
+Remove-Item Env:SUPABASE_ACCESS_TOKEN -ErrorAction SilentlyContinue
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
