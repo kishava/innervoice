@@ -122,7 +122,23 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
         connectionType: 'webrtc',
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start live call.')
+      const message = err instanceof Error ? err.message : 'Could not start live call.'
+      // #region agent log
+      fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
+        body: JSON.stringify({
+          sessionId: '0d719b',
+          runId: 'token-debug',
+          hypothesisId: 'H6,H7,H9',
+          location: 'LiveTalkPage.tsx:start',
+          message: 'start call failed',
+          data: { errorMessage: message.slice(0, 200) },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+      setError(message)
       setOrbState('idle')
     } finally {
       setConnecting(false)
