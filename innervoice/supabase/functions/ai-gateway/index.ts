@@ -327,8 +327,8 @@ async function assertVoiceExists(voiceId: string, key: string) {
   }
 }
 
-/** Sync agent default TTS voice + allow session overrides (cloned voices use turbo family). */
-async function prepareAgentForLiveCall(agentId: string, voiceId: string, key: string) {
+/** Point the ConvAI agent at the user's cloned voice (do not change TTS model — agent language rules apply). */
+async function setAgentTrainedVoice(agentId: string, voiceId: string, key: string) {
   const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
     method: 'PATCH',
     headers: {
@@ -339,9 +339,28 @@ async function prepareAgentForLiveCall(agentId: string, voiceId: string, key: st
       conversation_config: {
         tts: {
           voice_id: voiceId,
-          model_id: 'eleven_turbo_v2_5',
         },
       },
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await readErrorText(response)
+    throw new Error(
+      `Could not set your voice on the live-talk agent (${response.status}): ${detail.slice(0, 280)}`,
+    )
+  }
+}
+
+/** Allow prompt / first-message overrides from the app (voice comes from agent config above). */
+async function ensureLivePromptOverrides(agentId: string, key: string) {
+  const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PATCH',
+    headers: {
+      'xi-api-key': key,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
       platform_settings: {
         overrides: {
           conversation_config_override: {
@@ -350,7 +369,6 @@ async function prepareAgentForLiveCall(agentId: string, voiceId: string, key: st
               language: true,
               prompt: { prompt: true },
             },
-            tts: { voice_id: true },
           },
         },
       },
@@ -360,7 +378,7 @@ async function prepareAgentForLiveCall(agentId: string, voiceId: string, key: st
   if (!response.ok) {
     const detail = await readErrorText(response)
     throw new Error(
-      `Could not prepare live-talk agent (${response.status}). In ElevenLabs → Agent → Security, allow voice and prompt overrides. ${detail.slice(0, 220)}`,
+      `Could not enable prompt overrides on your agent (${response.status}). In ElevenLabs → Agent → Security, allow prompt and first message overrides. ${detail.slice(0, 200)}`,
     )
   }
 }
@@ -381,7 +399,8 @@ async function getConversationToken(payload: { voiceId?: string }) {
   }
 
   await assertVoiceExists(voiceId, key)
-  await prepareAgentForLiveCall(agentId, voiceId, key)
+  await setAgentTrainedVoice(agentId, voiceId, key)
+  await ensureLivePromptOverrides(agentId, key)
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,

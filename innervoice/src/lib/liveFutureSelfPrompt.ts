@@ -21,7 +21,8 @@ export function liveFutureSelfFirstMessage() {
   return "Hey. It's me — your future self. What's sitting on you right now?"
 }
 
-export function buildLiveConversationOverrides(voiceId: string, userName?: string) {
+/** Live talk: voice is set on the ElevenLabs agent; only personality overrides here. */
+export function buildLiveConversationOverrides(userName?: string) {
   return {
     agent: {
       prompt: {
@@ -29,11 +30,6 @@ export function buildLiveConversationOverrides(voiceId: string, userName?: strin
       },
       firstMessage: liveFutureSelfFirstMessage(),
       language: 'en' as const,
-    },
-    tts: {
-      voiceId,
-      stability: 0.35,
-      similarityBoost: 0.8,
     },
   }
 }

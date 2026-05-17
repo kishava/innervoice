@@ -7,9 +7,14 @@ import { useAuth } from '../../AuthContext'
 import { useAudioOrb } from '../../contexts/AudioOrbContext'
 import { BreathingVoiceOrb } from '../../components/BreathingVoiceOrb'
 import { buildLiveConversationOverrides } from '../../lib/liveFutureSelfPrompt'
+import { VoicePicker } from '../../components/VoicePicker'
+import type { UserVoice } from '../../types'
 
 interface Props {
   voiceId: string | null
+  voices?: UserVoice[]
+  onSelectVoice?: (elevenlabsVoiceId: string) => void
+  onManageVoices?: () => void
   onBack: () => void
 }
 
@@ -39,15 +44,21 @@ function disconnectMessage(details?: DisconnectionDetails): string | null {
   return null
 }
 
-export function LiveTalkPage({ voiceId, onBack }: Props) {
+export function LiveTalkPage({ voiceId, voices = [], onSelectVoice, onManageVoices, onBack }: Props) {
   return (
     <ConversationProvider>
-      <LiveTalkPageInner voiceId={voiceId} onBack={onBack} />
+      <LiveTalkPageInner
+        voiceId={voiceId}
+        voices={voices}
+        onSelectVoice={onSelectVoice}
+        onManageVoices={onManageVoices}
+        onBack={onBack}
+      />
     </ConversationProvider>
   )
 }
 
-function LiveTalkPageInner({ voiceId, onBack }: Props) {
+function LiveTalkPageInner({ voiceId, voices = [], onSelectVoice, onManageVoices, onBack }: Props) {
   const { user } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
@@ -193,7 +204,7 @@ function LiveTalkPageInner({ voiceId, onBack }: Props) {
       }
 
       const token = await fetchConversationToken(voiceId)
-      const overrides = buildLiveConversationOverrides(voiceId, user?.name)
+      const overrides = buildLiveConversationOverrides(user?.name)
       const waitForConnected = waitUntilConnected()
 
       conversation.startSession({

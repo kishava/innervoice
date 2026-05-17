@@ -339,6 +339,10 @@ export default function App() {
           step={step}
           hasHistory={conversations.length > 0}
           hasVoice={hasTrainedVoice}
+          voices={voices}
+          activeVoiceId={voiceId}
+          onSelectVoice={selectVoice}
+          onManageVoices={() => navigate('voices')}
           onNavigate={navigate}
           onOpenHistory={() => setShowHistory(true)}
           onOpenProfile={() => setShowProfile(true)}
@@ -471,7 +475,13 @@ export default function App() {
             />
           )}
           {step === 'live' && (
-            <LiveTalkPage voiceId={voiceId} onBack={() => navigate('chat')} />
+            <LiveTalkPage
+              voiceId={voiceId}
+              voices={voices}
+              onSelectVoice={selectVoice}
+              onManageVoices={() => navigate('voices')}
+              onBack={() => navigate('chat')}
+            />
           )}
         </motion.section>
 
