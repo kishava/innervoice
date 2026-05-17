@@ -47,29 +47,7 @@ export async function invokeGateway<T>(action: string, payload: Record<string, u
   })
 
   if (error) {
-    const message = await gatewayErrorMessage(error)
-    // #region agent log
-    if (action === 'getConversationToken') {
-      const status =
-        error instanceof FunctionsHttpError && error.context instanceof Response
-          ? error.context.status
-          : null
-      fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '0d719b' },
-        body: JSON.stringify({
-          sessionId: '0d719b',
-          runId: 'token-debug',
-          hypothesisId: 'H6,H7,H9',
-          location: 'backendGateway.ts:invokeGateway',
-          message: 'getConversationToken gateway error',
-          data: { httpStatus: status, errorMessage: message.slice(0, 200) },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-    }
-    // #endregion
-    throw new Error(message)
+    throw new Error(await gatewayErrorMessage(error))
   }
   if (!data) {
     throw new Error('Backend gateway returned an empty response.')
