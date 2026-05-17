@@ -267,7 +267,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       } catch {
         /* use shared fallback greeting */
       }
-      const overrides = buildLiveConversationOverrides(user?.name, firstMessage)
+      const overrides = buildLiveConversationOverrides(user?.name, firstMessage, voiceId)
       const waitForConnected = waitUntilConnected()
 
       conversation.startSession({
