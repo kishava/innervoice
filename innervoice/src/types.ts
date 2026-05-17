@@ -1,4 +1,4 @@
-export type AppStep = 'auth' | 'home' | 'recording' | 'cloning' | 'chat' | 'story' | 'live'
+export type AppStep = 'auth' | 'home' | 'recording' | 'cloning' | 'chat' | 'story' | 'live' | 'voices'
 
 export type Emotion =
   | 'neutral'
@@ -25,6 +25,13 @@ export interface Message {
   audioUrl?: string
   timestamp: number
   emotion?: Emotion
+}
+
+export interface UserVoice {
+  id: string
+  elevenlabsVoiceId: string
+  name: string
+  createdAt: number
 }
 
 export interface Conversation {

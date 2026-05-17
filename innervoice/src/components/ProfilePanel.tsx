@@ -9,9 +9,11 @@ import { ProfileAvatar } from './ProfileAvatar'
 interface Props {
   open: boolean
   onClose: () => void
+  voiceCount?: number
+  onOpenVoices?: () => void
 }
 
-export function ProfilePanel({ open, onClose }: Props) {
+export function ProfilePanel({ open, onClose, voiceCount = 0, onOpenVoices }: Props) {
   const { user, updateProfile } = useAuth()
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
@@ -226,9 +228,22 @@ export function ProfilePanel({ open, onClose }: Props) {
                   <span className="font-medium text-text-primary">Member since:</span> {memberSince}
                 </p>
                 <p className="mt-1">
-                  <span className="font-medium text-text-primary">Voice:</span>{' '}
-                  {user.voiceId ? 'Trained and ready' : 'Not trained yet — go to Voice Train'}
+                  <span className="font-medium text-text-primary">Voices:</span>{' '}
+                  {voiceCount > 0
+                    ? `${voiceCount} trained`
+                    : user.voiceId
+                      ? '1 trained'
+                      : 'None yet'}
                 </p>
+                {onOpenVoices && (
+                  <button
+                    type="button"
+                    onClick={onOpenVoices}
+                    className="mt-2 text-xs font-medium text-accent transition hover:underline"
+                  >
+                    View &amp; manage voices
+                  </button>
+                )}
               </div>
 
               {error && (

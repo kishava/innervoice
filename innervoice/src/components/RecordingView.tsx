@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { BookOpen, Mic, Radio, Square } from 'lucide-react'
 
 interface Props {
-  onUseRecording: (blob: Blob) => void
+  onUseRecording: (blob: Blob, voiceName: string) => void
 }
 
 const MIN_DURATION_MS = 30_000
@@ -30,6 +30,7 @@ export function RecordingView({ onUseRecording }: Props) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [tooShortHint, setTooShortHint] = useState(false)
   const [previewDuration, setPreviewDuration] = useState(0)
+  const [voiceName, setVoiceName] = useState('My future self')
 
   const mediaRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -104,8 +105,10 @@ export function RecordingView({ onUseRecording }: Props) {
       setTooShortHint(true)
       return
     }
+    const trimmedName = voiceName.trim()
+    if (!trimmedName) return
     const blob = await fetch(audioUrl).then((res) => res.blob())
-    onUseRecording(blob)
+    onUseRecording(blob, trimmedName)
   }
 
   return (
@@ -185,6 +188,16 @@ export function RecordingView({ onUseRecording }: Props) {
               Please record at least 30 seconds for a good voice clone.
             </p>
           )}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-text-secondary">Name this voice</span>
+            <input
+              value={voiceName}
+              onChange={(e) => setVoiceName(e.target.value)}
+              maxLength={48}
+              placeholder="e.g. Calm me, Work me, Night voice"
+              className="rounded-xl border border-border bg-input-bg px-4 py-2.5 text-sm text-text-primary outline-none transition focus:border-accent/60"
+            />
+          </label>
           <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
@@ -196,10 +209,10 @@ export function RecordingView({ onUseRecording }: Props) {
             <button
               type="button"
               onClick={useRecording}
-              disabled={!previewMeetsMin}
+              disabled={!previewMeetsMin || !voiceName.trim()}
               className="min-h-11 flex-1 rounded-full bg-accent px-6 py-3 font-semibold text-white shadow-[0_0_16px_var(--color-accent-soft)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Use This Voice
+              Train this voice
             </button>
           </div>
         </div>

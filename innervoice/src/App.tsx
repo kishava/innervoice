@@ -4,7 +4,9 @@ import { Sparkles } from 'lucide-react'
 import { cloneVoice, getLastTtsBackend, stripAudioTags, textToSpeech } from './api/elevenlabs'
 import { detectEmotion, getFutureSelfResponse, getGreetingResponse } from './api/openai'
 import { useAuth } from './AuthContext'
-import { isSupabaseConfigured } from './lib/supabase'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { useUserVoices } from './hooks/useUserVoices'
+import { VoicesView } from './components/VoicesView'
 import { AuthScreen } from './components/AuthScreen'
 import { ChatView } from './components/ChatView'
 import { CloningView } from './components/CloningView'
@@ -81,6 +83,10 @@ async function revealAssistantMessage(
 export default function App() {
   const { user, isAuthenticated, setUserVoiceId } = useAuth()
   const voiceId = user?.voiceId ?? null
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+
+  const { voices, addVoice, renameVoice, deleteVoice } = useUserVoices(authUserId, voiceId)
+  const hasTrainedVoice = Boolean(voiceId) || voices.length > 0
 
   const [step, setStep] = useState<AppStep>(() => pickInitialStep(isAuthenticated))
   const [messages, setMessages] = useState<Message[]>([])
@@ -101,6 +107,22 @@ export default function App() {
 
   const hasBackend = isSupabaseConfigured
   const demoMode = !hasBackend
+
+  useEffect(() => {
+    if (!supabase || !isAuthenticated) {
+      setAuthUserId(null)
+      return
+    }
+    void supabase.auth.getUser().then(({ data }) => setAuthUserId(data.user?.id ?? null))
+  }, [isAuthenticated])
+
+  const selectVoice = useCallback(
+    (nextVoiceId: string) => {
+      setUserVoiceId(nextVoiceId)
+      greetedFor.current = null
+    },
+    [setUserVoiceId],
+  )
 
   // Sync step with auth/voice state when those external values change.
   useEffect(() => {
@@ -275,7 +297,15 @@ export default function App() {
         }}
       />
 
-      <ProfilePanel open={showProfile} onClose={() => setShowProfile(false)} />
+      <ProfilePanel
+        open={showProfile}
+        onClose={() => setShowProfile(false)}
+        voiceCount={voices.length}
+        onOpenVoices={() => {
+          setShowProfile(false)
+          navigate('voices')
+        }}
+      />
 
       <HistoryPanel
         open={showHistory}
@@ -306,6 +336,7 @@ export default function App() {
         <Navbar
           step={step}
           hasHistory={conversations.length > 0}
+          hasVoice={hasTrainedVoice}
           onNavigate={navigate}
           onOpenHistory={() => setShowHistory(true)}
           onOpenProfile={() => setShowProfile(true)}
@@ -355,14 +386,15 @@ export default function App() {
           )}
           {step === 'recording' && (
             <RecordingView
-              onUseRecording={async (blob) => {
+              onUseRecording={async (blob, voiceName) => {
                 if (!hasBackend) {
                   setError('Missing Supabase config. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.')
                   return
                 }
                 setStep('cloning')
                 try {
-                  const newVoiceId = await cloneVoice(blob)
+                  const newVoiceId = await cloneVoice(blob, voiceName)
+                  await addVoice(newVoiceId, voiceName)
                   setUserVoiceId(newVoiceId)
                   greetedFor.current = null
                   setStep('chat')
@@ -371,6 +403,30 @@ export default function App() {
                   setError(err instanceof Error ? err.message : 'Voice cloning failed.')
                 }
               }}
+            />
+          )}
+          {step === 'voices' && (
+            <VoicesView
+              voices={voices}
+              activeVoiceId={voiceId}
+              onSelect={(id) => {
+                selectVoice(id)
+                navigate('chat')
+              }}
+              onRename={async (id, name) => {
+                await renameVoice(id, name)
+              }}
+              onDelete={async (id) => {
+                const removed = voices.find((v) => v.id === id)
+                const remaining = voices.filter((v) => v.id !== id)
+                await deleteVoice(id)
+                if (removed?.elevenlabsVoiceId === voiceId) {
+                  if (remaining.length > 0) selectVoice(remaining[0].elevenlabsVoiceId)
+                  else setUserVoiceId(null)
+                }
+              }}
+              onTrainNew={() => navigate('recording')}
+              onBack={() => navigate('chat')}
             />
           )}
           {step === 'cloning' && <CloningView />}
@@ -382,6 +438,10 @@ export default function App() {
               thinkingLabel={thinkingLabel}
               onSend={handleSendMessage}
               onOpenStory={() => navigate('story')}
+              voices={voices}
+              activeVoiceId={voiceId}
+              onSelectVoice={selectVoice}
+              onManageVoices={() => navigate('voices')}
             />
           )}
           {step === 'story' && (

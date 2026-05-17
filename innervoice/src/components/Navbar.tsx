@@ -22,6 +22,7 @@ import type { AppStep } from '../types'
 interface Props {
   step: AppStep
   hasHistory: boolean
+  hasVoice?: boolean
   onNavigate: (step: AppStep) => void
   onOpenHistory: () => void
   onOpenProfile: () => void
@@ -57,8 +58,9 @@ function NavButton({
   )
 }
 
-export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProfile }: Props) {
+export function Navbar({ step, hasHistory, hasVoice = false, onNavigate, onOpenHistory, onOpenProfile }: Props) {
   const { user, isAuthenticated, logout } = useAuth()
+  const voiceReady = Boolean(user?.voiceId) || hasVoice
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const optionsRef = useRef<HTMLDivElement | null>(null)
@@ -147,21 +149,21 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                   icon={<MessageCircle size={14} />}
                   onClick={() => go('chat')}
                   active={step === 'chat'}
-                  disabled={!user?.voiceId}
+                  disabled={!voiceReady}
                 />
                 <NavButton
                   label="Story"
                   icon={<BookOpen size={14} />}
                   onClick={() => go('story')}
                   active={step === 'story'}
-                  disabled={!user?.voiceId}
+                  disabled={!voiceReady}
                 />
                 <NavButton
                   label="Talk"
                   icon={<Phone size={14} />}
                   onClick={() => go('live')}
                   active={step === 'live'}
-                  disabled={!user?.voiceId}
+                  disabled={!voiceReady}
                 />
                 <motion.div ref={optionsRef} className="relative">
                   <button
@@ -208,12 +210,22 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                         <button
                           type="button"
                           onClick={() => {
+                            go('voices')
+                            setOptionsOpen(false)
+                          }}
+                          className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left text-xs text-text-secondary transition hover:border-accent/40 hover:bg-accent-soft/60 hover:text-text-primary"
+                        >
+                          <Mic2 size={14} /> My voices
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
                             go('recording')
                             setOptionsOpen(false)
                           }}
                           className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left text-xs text-text-secondary transition hover:border-accent/40 hover:bg-accent-soft/60 hover:text-text-primary"
                         >
-                          <Mic2 size={14} /> Voice Train
+                          <Mic2 size={14} /> Train new voice
                         </button>
                         <button
                           type="button"
@@ -266,21 +278,21 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                 icon={<MessageCircle size={14} />}
                 onClick={() => go('chat')}
                 active={step === 'chat'}
-                disabled={!user?.voiceId}
+                disabled={!voiceReady}
               />
               <NavButton
                 label="Story"
                 icon={<BookOpen size={14} />}
                 onClick={() => go('story')}
                 active={step === 'story'}
-                disabled={!user?.voiceId}
+                disabled={!voiceReady}
               />
               <NavButton
                 label="Talk"
                 icon={<Phone size={14} />}
                 onClick={() => go('live')}
                 active={step === 'live'}
-                disabled={!user?.voiceId}
+                disabled={!voiceReady}
               />
               <div className="rounded-2xl border border-border/80 bg-elevated/80 p-2">
                 <p className="mb-1 px-2 text-[11px] uppercase tracking-wider text-text-tertiary">Options</p>
@@ -301,10 +313,17 @@ export function Navbar({ step, hasHistory, onNavigate, onOpenHistory, onOpenProf
                 </button>
                 <button
                   type="button"
+                  onClick={() => go('voices')}
+                  className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs text-text-secondary transition hover:bg-accent-soft/60 hover:text-text-primary"
+                >
+                  <Mic2 size={14} /> My voices
+                </button>
+                <button
+                  type="button"
                   onClick={() => go('recording')}
                   className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs text-text-secondary transition hover:bg-accent-soft/60 hover:text-text-primary"
                 >
-                  <Mic2 size={14} /> Voice Train
+                  <Mic2 size={14} /> Train new voice
                 </button>
                 <button
                   type="button"

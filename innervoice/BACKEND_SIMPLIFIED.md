@@ -5,6 +5,7 @@ This project now uses a simple backend model:
 1. Supabase Auth for login/register/session.
 2. `profiles` table for user profile and `voice_id`.
 3. `conversations` + `messages` tables for chat history.
+4. `user_voices` table for named trained voices (multiple per user); `profiles.voice_id` is the active voice for chat.
 4. Frontend uses only Supabase as source of truth (no conversation localStorage fallback).
 5. OpenAI/ElevenLabs requests go through Supabase Edge Function `ai-gateway`.
 
