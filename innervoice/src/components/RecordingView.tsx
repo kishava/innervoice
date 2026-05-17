@@ -101,7 +101,7 @@ export function RecordingView({ onUseRecording }: Props) {
     setTooShortHint(false)
   }
 
-  const useRecording = async () => {
+  const trainFromRecording = async () => {
     if (!audioUrl) return
     if (!previewMeetsMin) {
       setTooShortHint(true)
@@ -247,7 +247,7 @@ export function RecordingView({ onUseRecording }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => void useRecording()}
+                onClick={() => void trainFromRecording()}
                 disabled={!previewMeetsMin || !voiceName.trim()}
                 className="min-h-11 flex-1 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-white shadow-[0_0_16px_var(--color-accent-soft)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
               >

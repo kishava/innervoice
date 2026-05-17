@@ -135,7 +135,7 @@ export function ChatView({
               <p className="text-sm leading-snug text-text-secondary">
                 Hold Space or tap the mic to talk. Open the lightbulb for ideas.
               </p>
-              <motion.div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 {voicePicker}
                 <span className="inline-flex items-center rounded-full border border-accent/35 px-2.5 py-1 text-xs text-text-primary">
                   Voice mode: <span className="ml-1 text-accent">{voiceModeEnabled ? 'ON' : 'OFF'}</span>
@@ -150,9 +150,9 @@ export function ChatView({
                     Read a script
                   </button>
                 )}
-              </motion.div>
+              </div>
             </div>
-            <div className="mx-auto rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_26px_var(--color-accent-soft)]">
+<div className="mx-auto rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_26px_var(--color-accent-soft)]">
               <BreathingVoiceOrb
                 state={assistantSpeaking ? 'speaking' : isProcessing ? 'processing' : 'listening'}
                 emotion="hopeful"

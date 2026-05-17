@@ -153,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         writeSession(profile)
         if (!cancelled) setUser(profile)
-      } catch (error) {
+      } catch {
         const fallback = readSession()
         if (!cancelled) setUser(fallback)
       }

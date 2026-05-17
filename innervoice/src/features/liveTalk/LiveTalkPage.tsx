@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConversation } from '@elevenlabs/react'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
-import { motion } from 'framer-motion'
 import { fetchConversationToken } from '../../api/liveConversation'
 import { useAuth } from '../../AuthContext'
 import { useAudioOrb } from '../../contexts/AudioOrbContext'
@@ -137,7 +136,7 @@ export function LiveTalkPage({ voiceId, onBack }: Props) {
         {!busy && !connected && 'Tap start when you’re ready for a live call'}
       </p>
 
-      <motion.div className="flex flex-wrap items-center justify-center gap-3">
+      <div className="flex flex-wrap items-center justify-center gap-3">
         {!connected ? (
           <button
             type="button"
@@ -175,7 +174,7 @@ export function LiveTalkPage({ voiceId, onBack }: Props) {
         >
           Back to chat
         </button>
-      </motion.div>
+      </div>
     </div>
   )
 }
