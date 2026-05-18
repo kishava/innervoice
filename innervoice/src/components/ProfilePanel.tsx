@@ -121,7 +121,7 @@ export function ProfilePanel({ open, onClose, voiceCount = 0, onOpenVoices }: Pr
             role="dialog"
             aria-modal="true"
             aria-labelledby="profile-title"
-            className="glass-panel glow-accent max-h-[92dvh] w-full max-w-md overflow-hidden rounded-2xl border border-border p-4 shadow-2xl sm:p-5"
+            className="glass-panel glow-accent max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-border p-4 shadow-2xl sm:p-5"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex justify-end">

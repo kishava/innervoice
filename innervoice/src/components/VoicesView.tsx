@@ -214,7 +214,7 @@ export function VoicesView({
           Loading voices…
         </p>
       ) : (
-        <motion.div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pr-1">
+        <motion.div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
           {defaultVoices.length > 0 && (
             <section>
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Default voices</h3>

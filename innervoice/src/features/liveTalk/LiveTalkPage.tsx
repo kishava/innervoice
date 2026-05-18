@@ -3,7 +3,7 @@ import { ConversationProvider, useConversation } from '@elevenlabs/react'
 import type { DisconnectionDetails } from '@elevenlabs/client'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { stripAudioTags } from '../../api/elevenlabs'
-import { fetchConversationToken } from '../../api/liveConversation'
+import { fetchConversationSignedUrl } from '../../api/liveConversation'
 import { getGreetingResponse } from '../../api/openai'
 import { useAuth } from '../../AuthContext'
 import { useAudioOrb } from '../../contexts/AudioOrbContext'
@@ -25,10 +25,31 @@ interface Props {
 type ConnectWaiter = {
   resolve: () => void
   reject: (error: Error) => void
+  cancel: () => void
 }
 
 const LIVE_CALL_ENDED_HINT =
   'Call ended unexpectedly. Allow microphone access, confirm your voice in My voices, then try again.'
+const LIVE_CONNECT_TIMEOUT_MS = 25_000
+const LIVE_SESSION_SETUP_TIMEOUT_MS = 20_000
+const LIVE_GREETING_TIMEOUT_MS = 7_000
+const LIVE_FIRST_RESPONSE_FALLBACK_MS = 1_800
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timeoutId: number | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), ms)
+  })
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+  })
+}
+
+function hasSecureLiveVoiceContext() {
+  return window.isSecureContext || LOCAL_HOSTNAMES.has(window.location.hostname)
+}
 
 function isOpaqueDisconnectContext(context: unknown): boolean {
   if (!context || typeof context !== 'object') return false
@@ -97,10 +118,30 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
   const [inCall, setInCall] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
   const [statusLabel, setStatusLabel] = useState('Tap below when you’re ready to talk')
+  const [connectHint, setConnectHint] = useState<string | null>(null)
   const connectWaitRef = useRef<ConnectWaiter | null>(null)
   const endingRef = useRef(false)
   const hadConnectedRef = useRef(false)
   const lastDebugRef = useRef<string | null>(null)
+  const heardAgentRef = useRef(false)
+  const firstResponseTimerRef = useRef<number | null>(null)
+
+  const cancelConnectWait = useCallback(() => {
+    connectWaitRef.current?.cancel()
+    connectWaitRef.current = null
+  }, [])
+
+  const cancelFirstResponseTimer = useCallback(() => {
+    if (firstResponseTimerRef.current !== null) {
+      window.clearTimeout(firstResponseTimerRef.current)
+      firstResponseTimerRef.current = null
+    }
+  }, [])
+
+  const rejectConnectWait = useCallback((message: string) => {
+    connectWaitRef.current?.reject(new Error(message))
+    connectWaitRef.current = null
+  }, [])
 
   const syncOrb = useCallback(
     (status: string, speaking: boolean) => {
@@ -119,15 +160,22 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
 
   const conversation = useConversation({
     micMuted,
+    volume: 1,
     onConnect: () => {
       setError(null)
       setInCall(true)
       hadConnectedRef.current = true
+      setConnecting(false)
     },
     onDisconnect: (details) => {
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
+      if (connectWaitRef.current) {
+        const detail = disconnectMessage(details) ?? lastDebugRef.current ?? LIVE_CALL_ENDED_HINT
+        rejectConnectWait(detail)
+        return
+      }
       if (!endingRef.current && hadConnectedRef.current) {
         const detail = disconnectMessage(details) ?? lastDebugRef.current ?? LIVE_CALL_ENDED_HINT
         setError(detail)
@@ -140,8 +188,19 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
-      connectWaitRef.current?.reject(new Error(detail))
-      connectWaitRef.current = null
+      rejectConnectWait(detail)
+    },
+    onMessage: (message) => {
+      if (import.meta.env.DEV) console.debug('[LiveTalk message]', message)
+      if (message.role === 'agent' || message.source === 'ai') {
+        heardAgentRef.current = true
+        cancelFirstResponseTimer()
+      }
+    },
+    onAudio: () => {
+      if (import.meta.env.DEV) console.debug('[LiveTalk audio]')
+      heardAgentRef.current = true
+      cancelFirstResponseTimer()
     },
     onModeChange: (mode) => {
       setOrbState(mode.mode === 'speaking' ? 'speaking' : 'listening')
@@ -150,6 +209,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       if (status.status === 'connecting') setOrbState('processing')
       if (status.status === 'connected') {
         setInCall(true)
+        setConnecting(false)
         setError(null)
         lastDebugRef.current = null
         connectWaitRef.current?.resolve()
@@ -158,6 +218,9 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       if (status.status === 'disconnected') {
         setInCall(false)
         setConnecting(false)
+        if (connectWaitRef.current && !endingRef.current) {
+          rejectConnectWait(lastDebugRef.current ?? LIVE_CALL_ENDED_HINT)
+        }
       }
     },
     onDebug: (info) => {
@@ -180,6 +243,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
 
   const connected = inCall || conversation.status === 'connected'
   const busy = connecting || conversation.status === 'connecting'
+  const canToggleCall = Boolean(voiceId && userId)
 
   const orbState = busy
     ? 'processing'
@@ -201,6 +265,10 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       return undefined
     }
     if (busy) {
+      if (connectHint) {
+        setStatusLabel(connectHint)
+        return undefined
+      }
       setStatusLabel(pickThinkingLabel())
       const intervalId = window.setInterval(() => setStatusLabel(pickThinkingLabel()), 1300)
       return () => window.clearInterval(intervalId)
@@ -211,17 +279,16 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     }
     setStatusLabel('Listening… say what’s on your mind')
     return undefined
-  }, [busy, connected, conversation.isSpeaking, voiceId])
+  }, [busy, connected, connectHint, conversation.isSpeaking, voiceId])
 
   useEffect(() => {
     if (conversation.status === 'error' && conversation.message) {
       setError(conversation.message)
       setInCall(false)
       setConnecting(false)
-      connectWaitRef.current?.reject(new Error(conversation.message))
-      connectWaitRef.current = null
+      rejectConnectWait(conversation.message)
     }
-  }, [conversation.message, conversation.status])
+  }, [conversation.message, conversation.status, rejectConnectWait])
 
   const waitUntilConnected = () =>
     new Promise<void>((resolve, reject) => {
@@ -231,8 +298,8 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       }
       const timeoutId = window.setTimeout(() => {
         connectWaitRef.current = null
-        reject(new Error('Connection timed out. Allow microphone access and try again.'))
-      }, 60_000)
+        reject(new Error('Live talk could not connect. Check microphone permission, then try again.'))
+      }, LIVE_CONNECT_TIMEOUT_MS)
       connectWaitRef.current = {
         resolve: () => {
           window.clearTimeout(timeoutId)
@@ -242,17 +309,31 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
           window.clearTimeout(timeoutId)
           reject(err)
         },
+        cancel: () => {
+          window.clearTimeout(timeoutId)
+        },
       }
     })
 
   const start = async () => {
     if (!voiceId || !userId || busy || connected) return
+    if (!hasSecureLiveVoiceContext()) {
+      setError('Live voice requires HTTPS or localhost. Open this app on http://127.0.0.1:5173, or use HTTPS for LAN access.')
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('This browser cannot start live voice because microphone access is unavailable. Try Chrome or Edge on localhost/HTTPS.')
+      return
+    }
     setConnecting(true)
+    setConnectHint('Preparing your live voice...')
     setError(null)
     setInCall(false)
     setOrbState('processing')
     endingRef.current = false
     hadConnectedRef.current = false
+    heardAgentRef.current = false
+    cancelFirstResponseTimer()
 
     try {
       if (conversation.status !== 'disconnected') {
@@ -260,34 +341,58 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         await new Promise((r) => window.setTimeout(r, 300))
       }
 
-      await navigator.mediaDevices.getUserMedia({ audio: true })
-
       let firstMessage: string | undefined
       try {
-        const greetingTagged = await getGreetingResponse(user?.name)
+        setConnectHint('Preparing your greeting...')
+        const greetingTagged = await withTimeout(
+          getGreetingResponse(user?.name),
+          LIVE_GREETING_TIMEOUT_MS,
+          'Greeting took too long.',
+        )
         firstMessage = stripAudioTags(greetingTagged).trim() || undefined
       } catch {
         /* use shared fallback greeting */
       }
-      const overrides = buildLiveConversationOverrides(user?.name, firstMessage)
+      const overrides = buildLiveConversationOverrides(user?.name, firstMessage, voiceId)
+
+      setConnectHint('Preparing your live voice...')
+      const signedUrl = await withTimeout(
+        fetchConversationSignedUrl(voiceId),
+        LIVE_SESSION_SETUP_TIMEOUT_MS,
+        'Could not prepare the live voice session. Check your ElevenLabs/Supabase setup and try again.',
+      )
+
+      setConnectHint('Opening the live room...')
       const waitForConnected = waitUntilConnected()
-
-      const token = await fetchConversationToken(voiceId)
-
       await conversation.startSession({
-        conversationToken: token,
-        connectionType: 'webrtc',
+        signedUrl,
+        connectionType: 'websocket',
         overrides,
         dynamicVariables: user?.name ? { user_name: user.name } : undefined,
       })
 
       await waitForConnected
+      setConnectHint(null)
       setInCall(true)
+      conversation.setVolume({ volume: 1 })
+      conversation.sendUserActivity()
+      firstResponseTimerRef.current = window.setTimeout(() => {
+        firstResponseTimerRef.current = null
+        if (!heardAgentRef.current && !endingRef.current) {
+          try {
+            conversation.sendUserMessage(
+              'Start this live voice call now with a short warm greeting, then invite me to speak.',
+            )
+          } catch (sendError) {
+            if (import.meta.env.DEV) console.debug('[LiveTalk fallback failed]', sendError)
+          }
+        }
+      }, LIVE_FIRST_RESPONSE_FALLBACK_MS)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start live call.')
       setInCall(false)
       setOrbState('idle')
-      connectWaitRef.current = null
+      cancelConnectWait()
       try {
         conversation.endSession()
       } catch {
@@ -295,12 +400,15 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       }
     } finally {
       setConnecting(false)
+      setConnectHint(null)
     }
   }
 
   const end = async () => {
     endingRef.current = true
     setError(null)
+    cancelConnectWait()
+    cancelFirstResponseTimer()
     try {
       conversation.endSession()
     } catch {
@@ -308,9 +416,20 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     }
     setInCall(false)
     setConnecting(false)
+    setConnectHint(null)
     setOrbState('idle')
-    endingRef.current = false
     hadConnectedRef.current = false
+    window.setTimeout(() => {
+      endingRef.current = false
+    }, 300)
+  }
+
+  const toggleCall = () => {
+    if (busy || connected) {
+      void end()
+      return
+    }
+    void start()
   }
 
   const toggleMute = () => {
@@ -354,14 +473,20 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
 
           <section className="live-talk-card flex min-h-0 w-full max-w-2xl flex-1 items-center justify-center rounded-2xl border border-border/80 bg-elevated/55 px-3 py-3 backdrop-blur-xl sm:px-5">
             <div className="flex min-h-0 flex-col items-center justify-center gap-2">
-              <div className="rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_32px_var(--color-accent-soft)]">
+              <button
+                type="button"
+                onClick={toggleCall}
+                disabled={!canToggleCall}
+                aria-label={busy || connected ? 'Stop live call' : 'Start live call'}
+                className="rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_32px_var(--color-accent-soft)] transition hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-55"
+              >
                 <BreathingVoiceOrb
                   state={orbState}
                   emotion="hopeful"
                   level={connected ? (conversation.isSpeaking ? 0.9 : 0.35) : busy ? 0.45 : 0.2}
                   className="live-talk-orb h-24 w-24 sm:h-28 sm:w-28"
                 />
-              </div>
+              </button>
               <p className="live-talk-card-copy max-w-md text-sm leading-relaxed text-text-secondary">
                 {connected
                   ? 'Hold the mic unmuted and talk. Your future self listens, then answers in your voice.'
@@ -386,12 +511,16 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
               {!connected ? (
                 <button
                   type="button"
-                  onClick={() => void start()}
-                  disabled={!voiceId || !userId || busy}
-                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-accent/60 bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_24px_var(--color-accent-soft)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
+                  onClick={toggleCall}
+                  disabled={!canToggleCall}
+                  className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_0_24px_var(--color-accent-soft)] transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem] ${
+                    busy
+                      ? 'border-red-500/45 bg-red-500/20 text-red-100 hover:bg-red-500/30'
+                      : 'border-accent/60 bg-accent text-white hover:bg-accent-hover'
+                  }`}
                 >
-                  <Phone size={16} />
-                  {busy ? 'Connecting…' : 'Connect with Your Future Self'}
+                  {busy ? <PhoneOff size={16} /> : <Phone size={16} />}
+                  {busy ? 'Stop connecting' : 'Connect with Your Future Self'}
                 </button>
               ) : (
                 <div className="flex w-full items-center justify-center gap-2.5 sm:w-auto">

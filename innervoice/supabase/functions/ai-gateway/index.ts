@@ -310,10 +310,21 @@ async function transcribeAudio(payload: {
 }
 
 const DEFAULT_AGENT_ID = 'agent_9401krssabvyfd4bkam1tamgw70g'
+const DEFAULT_ELEVENLABS_VOICE_IDS = new Set([
+  '21m00Tcm4TlvDq8ikWAM',
+  'pNInz6obpgDQGcFmaJgB',
+  'EXAVITQu4vr4xnSDxMaL',
+  'ErXwobaYiN019PkySvjV',
+  'TxGEqnHWrfWFTfGW9XjX',
+  'MF3mGyEYCl7XYWbV9V6O',
+  'yoZ06aMxZJJ28mfd3POQ',
+  'AZnzlk1XvdvUeBnXmlld',
+])
 
 async function assertVoiceExists(voiceId: string, key: string) {
   const id = voiceId.trim()
   if (!id) throw new Error('A trained voice is required for live talk.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(id)) return
 
   const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(id)}`, {
     headers: { 'xi-api-key': key },
@@ -326,30 +337,6 @@ async function assertVoiceExists(voiceId: string, key: string) {
   }
   if (!response.ok) {
     throw new Error(`Could not verify voice (${response.status}): ${await readErrorText(response)}`)
-  }
-}
-
-async function setAgentTrainedVoice(agentId: string, voiceId: string, key: string) {
-  const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
-    method: 'PATCH',
-    headers: {
-      'xi-api-key': key,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      conversation_config: {
-        tts: {
-          voice_id: voiceId,
-        },
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const detail = await readErrorText(response)
-    throw new Error(
-      `Could not set your voice on the live-talk agent (${response.status}): ${detail.slice(0, 280)}`,
-    )
   }
 }
 
@@ -368,6 +355,12 @@ async function ensureLivePromptOverrides(agentId: string, key: string) {
               first_message: true,
               language: true,
               prompt: { prompt: true },
+            },
+            tts: {
+              voice_id: true,
+              stability: true,
+              speed: true,
+              similarity_boost: true,
             },
           },
         },
@@ -394,7 +387,6 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
   if (!voiceId) throw new Error('voiceId is required for live talk.')
 
   await assertVoiceExists(voiceId, key)
-  await setAgentTrainedVoice(agentId, voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
 
   const response = await fetch(
@@ -410,6 +402,34 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
   const data = (await response.json()) as { token?: string }
   if (!data.token) throw new Error('ElevenLabs returned no conversation token.')
   return { token: data.token }
+}
+
+/** Mint WebSocket signed URL + prepare InnerVoice agent for client-side audio streaming. */
+async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }) {
+  const key = Deno.env.get('ELEVENLABS_API_KEY')
+  if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
+
+  const agentId = String(payload?.agentId ?? Deno.env.get('ELEVENLABS_AGENT_ID') ?? DEFAULT_AGENT_ID).trim()
+  const voiceId = String(payload?.voiceId ?? '').trim()
+  if (!agentId) throw new Error('agentId is required for live talk.')
+  if (!voiceId) throw new Error('voiceId is required for live talk.')
+
+  await assertVoiceExists(voiceId, key)
+  await ensureLivePromptOverrides(agentId, key)
+
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
+    { headers: { 'xi-api-key': key } },
+  )
+
+  if (!response.ok) {
+    const detail = await readErrorText(response)
+    throw new Error(`ElevenLabs signed URL failed (${response.status}): ${detail}`)
+  }
+
+  const data = (await response.json()) as { signed_url?: string }
+  if (!data.signed_url) throw new Error('ElevenLabs returned no signed URL.')
+  return { signedUrl: data.signed_url }
 }
 
 Deno.serve(async (request) => {
@@ -454,6 +474,10 @@ Deno.serve(async (request) => {
         const data = await getConversationToken(payload as { agentId?: string; voiceId?: string })
         return json(200, { ok: true, data })
       }
+      case 'getConversationSignedUrl': {
+        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string })
+        return json(200, { ok: true, data })
+      }
       case 'deleteVoice': {
         const data = await deleteVoice(payload as { voiceId: string })
         return json(200, { ok: true, data })
@@ -466,4 +490,3 @@ Deno.serve(async (request) => {
     return json(500, { ok: false, error: message })
   }
 })
-

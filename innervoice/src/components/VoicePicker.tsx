@@ -64,7 +64,7 @@ export function VoicePicker({
       {open && voices.length > 0 && (
         <div
           role="listbox"
-          className={`glass-panel absolute top-full z-40 mt-1.5 min-w-[220px] max-w-[min(320px,90vw)] rounded-2xl border border-border/80 p-1.5 shadow-[0_12px_35px_rgb(0_0_0_/_0.3)] ${
+          className={`glass-panel absolute top-full z-40 mt-1.5 max-h-[min(18rem,55dvh)] min-w-[220px] max-w-[min(320px,90vw)] overflow-y-auto rounded-2xl border border-border/80 p-1.5 shadow-[0_12px_35px_rgb(0_0_0_/_0.3)] ${
             menuCentered ? 'left-1/2 -translate-x-1/2' : 'left-0'
           }`}
         >

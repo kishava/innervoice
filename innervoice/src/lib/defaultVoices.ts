@@ -12,8 +12,16 @@ const DEFAULT_VOICE_DEFS = [
   { elevenlabsVoiceId: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi' },
 ] as const
 
+const DEFAULT_ELEVENLABS_VOICE_IDS: ReadonlySet<string> = new Set(
+  DEFAULT_VOICE_DEFS.map((voice) => voice.elevenlabsVoiceId),
+)
+
 export function isDefaultVoiceEntry(id: string): boolean {
   return id.startsWith('default-')
+}
+
+export function isDefaultElevenLabsVoiceId(id: string): boolean {
+  return DEFAULT_ELEVENLABS_VOICE_IDS.has(id)
 }
 
 export function defaultVoicesAsUserVoices(): UserVoice[] {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { deleteRemoteVoice } from '../api/voices'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
-import { isDefaultVoiceEntry } from '../lib/defaultVoices'
+import { isDefaultElevenLabsVoiceId, isDefaultVoiceEntry } from '../lib/defaultVoices'
 import { MAX_VOICES_PER_USER, voiceLimitMessage } from '../lib/voicePolicy'
 import type { UserVoice } from '../types'
 
@@ -43,6 +43,7 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
   const syncProfileVoice = useCallback(
     async (rows: UserVoice[], profileVoiceId: string | null): Promise<UserVoice[]> => {
       if (!userId || !supabase || !profileVoiceId) return rows
+      if (isDefaultElevenLabsVoiceId(profileVoiceId)) return rows
       if (rows.some((v) => v.elevenlabsVoiceId === profileVoiceId)) return rows
 
       const { data, error: insertError } = await supabase
@@ -92,7 +93,9 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
 
       if (fetchError) throw fetchError
 
-      let next = (data as VoiceRow[] | null)?.map(mapRow) ?? []
+      let next = ((data as VoiceRow[] | null)?.map(mapRow) ?? []).filter(
+        (voice) => !isDefaultElevenLabsVoiceId(voice.elevenlabsVoiceId),
+      )
       next = await syncProfileVoice(next, activeVoiceId)
       setVoices(next)
     } catch (err) {

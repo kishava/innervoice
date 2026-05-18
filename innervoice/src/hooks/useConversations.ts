@@ -3,15 +3,34 @@ import type { Conversation, Message } from '../types'
 import { useAuth } from '../AuthContext'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
+const ACTIVE_CONVERSATION_KEY = 'innervoice-active-conversation'
+
 function makeTitle(messages: Message[]) {
   const firstUser = messages.find((m) => m.role === 'user')?.text ?? 'New Conversation'
   return firstUser.length > 60 ? `${firstUser.slice(0, 57)}...` : firstUser
 }
 
+function readActiveConversationId() {
+  try {
+    return localStorage.getItem(ACTIVE_CONVERSATION_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeActiveConversationId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(ACTIVE_CONVERSATION_KEY, id)
+    else localStorage.removeItem(ACTIVE_CONVERSATION_KEY)
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
 export function useConversations() {
   const { isAuthenticated } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(() => readActiveConversationId())
 
   useEffect(() => {
     if (!isAuthenticated || !isSupabaseConfigured || !supabase) {
@@ -77,6 +96,10 @@ export function useConversations() {
 
       if (!cancelled) {
         setConversations(next)
+        const savedActiveId = readActiveConversationId()
+        if (savedActiveId && next.some((item) => item.id === savedActiveId)) {
+          setActiveId(savedActiveId)
+        }
       }
     }
 
@@ -85,6 +108,10 @@ export function useConversations() {
       cancelled = true
     }
   }, [isAuthenticated])
+
+  useEffect(() => {
+    writeActiveConversationId(activeId)
+  }, [activeId])
 
   const saveConversation = useCallback(
     (voiceId: string, messages: Message[]) => {

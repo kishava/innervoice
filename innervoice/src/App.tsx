@@ -25,12 +25,29 @@ import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
 
 const ONBOARDED_KEY = 'innervoice-onboarded'
+const APP_STEP_KEY = 'innervoice-active-step'
 
 const HEAVY_EMOTIONS = new Set<Emotion>(['anxious', 'sad', 'fearful', 'stressed', 'grieving', 'hurt', 'lonely'])
+
+const RESTORABLE_STEPS = new Set<AppStep>(['recording', 'chat', 'story', 'live', 'voices'])
 
 function pickInitialStep(isAuthenticated: boolean): AppStep {
   if (!isAuthenticated) return 'auth'
   return 'chat'
+}
+
+function readSavedStep(): AppStep | null {
+  try {
+    const saved = localStorage.getItem(APP_STEP_KEY) as AppStep | null
+    return saved && RESTORABLE_STEPS.has(saved) ? saved : null
+  } catch {
+    return null
+  }
+}
+
+function writeSavedStep(step: AppStep) {
+  if (!RESTORABLE_STEPS.has(step)) return
+  localStorage.setItem(APP_STEP_KEY, step)
 }
 
 function wait(ms: number) {
@@ -129,10 +146,16 @@ export default function App() {
     }
     setStep((current) => {
       if (current !== 'auth' && current !== 'home') return current
-      return postAuthStep === 'recording' ? 'recording' : 'chat'
+      if (postAuthStep === 'recording') return 'recording'
+      return readSavedStep() ?? 'chat'
     })
     if (postAuthStep) clearPostAuthStep()
   }, [clearPostAuthStep, isAuthenticated, postAuthStep])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    writeSavedStep(step)
+  }, [isAuthenticated, step])
 
   useEffect(() => {
     if (voiceId && messages.length > 0) {
@@ -186,6 +209,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void speakGreeting()
   }, [activeId, messages.length, speakGreeting, step, voiceId])
+
+  useEffect(() => {
+    if (step !== 'chat') return
+    if (!activeId || messages.length > 0) return
+    const activeConversation = conversations.find((item) => item.id === activeId)
+    if (!activeConversation) return
+    setUserVoiceId(activeConversation.voiceId)
+    setMessages(activeConversation.messages)
+    greetedFor.current = activeConversation.voiceId
+  }, [activeId, conversations, messages.length, setUserVoiceId, step])
 
   const resetApp = useCallback(() => {
     messages.forEach((message) => {

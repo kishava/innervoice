@@ -1,6 +1,7 @@
 import { invokeGateway } from './backendGateway'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { VOICE_INACTIVE_MS } from '../lib/voicePolicy'
+import { isDefaultElevenLabsVoiceId } from '../lib/defaultVoices'
 
 export async function deleteRemoteVoice(elevenlabsVoiceId: string): Promise<void> {
   await invokeGateway('deleteVoice', { voiceId: elevenlabsVoiceId })
@@ -19,10 +20,13 @@ export async function purgeAllUserVoices(userId: string): Promise<void> {
   const voiceIds = new Set<string>()
   if (!error) {
     for (const row of rows ?? []) {
-      voiceIds.add(row.elevenlabs_voice_id as string)
+      const id = row.elevenlabs_voice_id as string
+      if (!isDefaultElevenLabsVoiceId(id)) voiceIds.add(id)
     }
   }
-  if (profile?.voice_id) voiceIds.add(profile.voice_id as string)
+  if (profile?.voice_id && !isDefaultElevenLabsVoiceId(profile.voice_id as string)) {
+    voiceIds.add(profile.voice_id as string)
+  }
 
   for (const id of voiceIds) {
     try {
