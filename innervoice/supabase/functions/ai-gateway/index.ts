@@ -309,6 +309,109 @@ async function transcribeAudio(payload: {
   throw new Error('No transcription provider configured. Set OPENAI_API_KEY or ELEVENLABS_API_KEY.')
 }
 
+const DEFAULT_AGENT_ID = 'agent_9401krssabvyfd4bkam1tamgw70g'
+
+async function assertVoiceExists(voiceId: string, key: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('A trained voice is required for live talk.')
+
+  const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(id)}`, {
+    headers: { 'xi-api-key': key },
+  })
+
+  if (response.status === 404) {
+    throw new Error(
+      'This voice ID is not in your ElevenLabs account. Open My voices, select a current voice, or train a new one.',
+    )
+  }
+  if (!response.ok) {
+    throw new Error(`Could not verify voice (${response.status}): ${await readErrorText(response)}`)
+  }
+}
+
+async function setAgentTrainedVoice(agentId: string, voiceId: string, key: string) {
+  const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PATCH',
+    headers: {
+      'xi-api-key': key,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      conversation_config: {
+        tts: {
+          voice_id: voiceId,
+        },
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await readErrorText(response)
+    throw new Error(
+      `Could not set your voice on the live-talk agent (${response.status}): ${detail.slice(0, 280)}`,
+    )
+  }
+}
+
+async function ensureLivePromptOverrides(agentId: string, key: string) {
+  const response = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PATCH',
+    headers: {
+      'xi-api-key': key,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      platform_settings: {
+        overrides: {
+          conversation_config_override: {
+            agent: {
+              first_message: true,
+              language: true,
+              prompt: { prompt: true },
+            },
+          },
+        },
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await readErrorText(response)
+    throw new Error(
+      `Could not enable prompt overrides on your agent (${response.status}). In ElevenLabs → InnerVoice → Security, allow prompt and first message overrides. ${detail.slice(0, 200)}`,
+    )
+  }
+}
+
+/** Mint WebRTC token + prepare InnerVoice agent (voice on agent, prompt via client overrides). */
+async function getConversationToken(payload: { agentId?: string; voiceId?: string }) {
+  const key = Deno.env.get('ELEVENLABS_API_KEY')
+  if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
+
+  const agentId = String(payload?.agentId ?? Deno.env.get('ELEVENLABS_AGENT_ID') ?? DEFAULT_AGENT_ID).trim()
+  const voiceId = String(payload?.voiceId ?? '').trim()
+  if (!agentId) throw new Error('agentId is required for live talk.')
+  if (!voiceId) throw new Error('voiceId is required for live talk.')
+
+  await assertVoiceExists(voiceId, key)
+  await setAgentTrainedVoice(agentId, voiceId, key)
+  await ensureLivePromptOverrides(agentId, key)
+
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
+    { headers: { 'xi-api-key': key } },
+  )
+
+  if (!response.ok) {
+    const detail = await readErrorText(response)
+    throw new Error(`ElevenLabs conversation token failed (${response.status}): ${detail}`)
+  }
+
+  const data = (await response.json()) as { token?: string }
+  if (!data.token) throw new Error('ElevenLabs returned no conversation token.')
+  return { token: data.token }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -345,6 +448,10 @@ Deno.serve(async (request) => {
         const data = await transcribeAudio(
           payload as { audioBase64: string; mimeType: string; whisperOnly?: boolean },
         )
+        return json(200, { ok: true, data })
+      }
+      case 'getConversationToken': {
+        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string })
         return json(200, { ok: true, data })
       }
       case 'deleteVoice': {

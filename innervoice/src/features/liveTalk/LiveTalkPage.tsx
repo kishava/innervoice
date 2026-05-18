@@ -3,6 +3,7 @@ import { ConversationProvider, useConversation } from '@elevenlabs/react'
 import type { DisconnectionDetails } from '@elevenlabs/client'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { stripAudioTags } from '../../api/elevenlabs'
+import { fetchConversationToken } from '../../api/liveConversation'
 import { getElevenLabsAgentId } from '../../lib/elevenLabsConvai'
 import { getGreetingResponse } from '../../api/openai'
 import { useAuth } from '../../AuthContext'
@@ -28,6 +29,36 @@ type ConnectWaiter = {
 
 const LIVE_CALL_ENDED_HINT =
   'Call ended unexpectedly. Allow microphone access, confirm your voice in My voices, then try again.'
+
+// #region agent log
+function dbg(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '996712' },
+    body: JSON.stringify({
+      sessionId: '996712',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  try {
+    const key = 'innervoice-debug-996712'
+    const prev = JSON.parse(sessionStorage.getItem(key) ?? '[]') as unknown[]
+    prev.push({ hypothesisId, location, message, data, timestamp: Date.now() })
+    sessionStorage.setItem(key, JSON.stringify(prev.slice(-40)))
+  } catch {
+    /* ignore */
+  }
+}
+// #endregion
 
 function isOpaqueDisconnectContext(context: unknown): boolean {
   if (!context || typeof context !== 'object') return false
@@ -124,6 +155,13 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       hadConnectedRef.current = true
     },
     onDisconnect: (details) => {
+      // #region agent log
+      dbg('H1-H5', 'LiveTalkPage.tsx:onDisconnect', 'disconnect', {
+        reason: details?.reason ?? null,
+        endingRef: endingRef.current,
+        hadConnected: hadConnectedRef.current,
+      })
+      // #endregion
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
@@ -135,6 +173,12 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     },
     onError: (message) => {
       const detail = typeof message === 'string' ? message : 'Live voice connection failed.'
+      // #region agent log
+      dbg('H1-H4-H6', 'LiveTalkPage.tsx:onError', 'sdk error', {
+        detail: detail.slice(0, 200),
+        type: typeof message,
+      })
+      // #endregion
       setError(detail)
       setInCall(false)
       setConnecting(false)
@@ -146,6 +190,9 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       setOrbState(mode.mode === 'speaking' ? 'speaking' : 'listening')
     },
     onStatusChange: (status) => {
+      // #region agent log
+      dbg('H5', 'LiveTalkPage.tsx:onStatusChange', 'status', { status: status.status })
+      // #endregion
       if (status.status === 'connecting') setOrbState('processing')
       if (status.status === 'connected') {
         setInCall(true)
@@ -246,6 +293,14 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
 
   const start = async () => {
     if (!voiceId || busy || connected) return
+    // #region agent log
+    dbg('H3-H4', 'LiveTalkPage.tsx:start', 'start tapped', {
+      voiceIdLen: voiceId.length,
+      agentId: getElevenLabsAgentId(),
+      busy,
+      connected,
+    })
+    // #endregion
     setConnecting(true)
     setError(null)
     setInCall(false)
@@ -259,7 +314,19 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         await new Promise((r) => window.setTimeout(r, 300))
       }
 
-      await navigator.mediaDevices.getUserMedia({ audio: true })
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true })
+        // #region agent log
+        dbg('H2', 'LiveTalkPage.tsx:start', 'getUserMedia ok', {})
+        // #endregion
+      } catch (micErr) {
+        // #region agent log
+        dbg('H2', 'LiveTalkPage.tsx:start', 'getUserMedia failed', {
+          err: micErr instanceof Error ? micErr.name : 'unknown',
+        })
+        // #endregion
+        throw micErr
+      }
 
       let firstMessage: string | undefined
       try {
@@ -268,19 +335,44 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       } catch {
         /* use shared fallback greeting */
       }
-      const overrides = buildLiveConversationOverrides(user?.name, firstMessage, voiceId)
+      const overrides = buildLiveConversationOverrides(user?.name, firstMessage)
       const waitForConnected = waitUntilConnected()
 
-      conversation.startSession({
+      // #region agent log
+      dbg('H4-H6', 'LiveTalkPage.tsx:start', 'before startSession', {
+        mode: 'webrtc-token',
         agentId: getElevenLabsAgentId(),
+        voiceIdLen: voiceId.length,
+      })
+      // #endregion
+
+      const token = await fetchConversationToken(voiceId)
+
+      // #region agent log
+      dbg('H4', 'LiveTalkPage.tsx:start', 'token received', { tokenLen: token.length })
+      // #endregion
+
+      const sessionId = await conversation.startSession({
+        conversationToken: token,
         connectionType: 'webrtc',
         overrides,
         dynamicVariables: user?.name ? { user_name: user.name } : undefined,
       })
 
+      // #region agent log
+      dbg('H5', 'LiveTalkPage.tsx:start', 'startSession resolved', {
+        sessionId: sessionId ?? null,
+      })
+      // #endregion
+
       await waitForConnected
       setInCall(true)
     } catch (err) {
+      // #region agent log
+      dbg('H2-H5', 'LiveTalkPage.tsx:start', 'start catch', {
+        err: err instanceof Error ? err.message.slice(0, 200) : String(err),
+      })
+      // #endregion
       setError(err instanceof Error ? err.message : 'Could not start live call.')
       setInCall(false)
       setOrbState('idle')
