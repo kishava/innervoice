@@ -375,7 +375,7 @@ export default function App() {
           className={`min-h-0 flex-1 overflow-hidden ${
             step === 'chat'
               ? 'rounded-2xl border border-transparent bg-transparent p-0 shadow-none'
-              : 'glass-panel glow-accent rounded-3xl border border-border/80 p-3 shadow-[0_12px_35px_rgb(0_0_0_/_0.26)] sm:p-4 lg:p-5'
+              : 'glass-panel glow-accent flex flex-col rounded-3xl border border-border/80 p-3 shadow-[0_12px_35px_rgb(0_0_0_/_0.26)] sm:p-4 lg:p-5'
           }`}
         >
           {step === 'auth' && <AuthScreen />}

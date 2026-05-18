@@ -314,112 +314,115 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-32 bg-[radial-gradient(circle_at_center,rgb(127_157_255_/_0.35),transparent_68%)] blur-2xl lg:block" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-32 bg-[radial-gradient(circle_at_center,rgb(127_157_255_/_0.35),transparent_68%)] blur-2xl lg:block" />
-
-      <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-5 px-4 py-5 sm:gap-6 sm:py-6">
-        <header className="w-full text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
-            Your Future Self is Here.
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-text-secondary">
-            Same voice and presence as chat — speak naturally, like talking to someone who already knows you.
-          </p>
-        </header>
-
-        {voices && voices.length > 0 && onSelectVoice && (
-          <section className="flex w-full flex-col items-center gap-2">
-            <p className="text-xs font-medium text-text-tertiary">Voice for this call</p>
-            <VoicePicker
-              voices={voices}
-              activeVoiceId={voiceId}
-              menuCentered
-              onSelect={(id) => {
-                if (id !== voiceId) {
-                  if (connected || busy) void end()
-                  onSelectVoice(id)
-                }
-              }}
-              onManage={onManageVoices}
-              disabled={busy || connected}
-            />
-          </section>
-        )}
-
-        <section className="w-full rounded-2xl border border-border/80 bg-elevated/55 p-4 backdrop-blur-xl">
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
-            <p className="max-w-xs text-center text-sm leading-snug text-text-secondary sm:text-left">
-              {connected
-                ? 'Hold the mic unmuted and talk. Your future self listens, then answers in your voice.'
-                : 'Allow microphone access when prompted. One tap connects you for a live back-and-forth.'}
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6">
+        <div className="flex w-full max-w-md flex-col items-center gap-5 text-center sm:max-w-lg sm:gap-6">
+          <header className="w-full space-y-2">
+            <h2 className="text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
+              Your Future Self is Here.
+            </h2>
+            <p className="mx-auto max-w-sm text-sm leading-relaxed text-text-secondary">
+              Same voice and presence as chat — speak naturally, like talking to someone who already knows you.
             </p>
-            <div className="mx-auto shrink-0 rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_26px_var(--color-accent-soft)]">
-              <BreathingVoiceOrb
-                state={orbState}
-                emotion="hopeful"
-                level={connected ? (conversation.isSpeaking ? 0.9 : 0.35) : busy ? 0.45 : 0.2}
-                className="mx-auto h-28 w-28 shrink-0 sm:h-32 sm:w-32"
+          </header>
+
+          {voices && voices.length > 0 && onSelectVoice && (
+            <section className="flex w-full flex-col items-center gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-text-tertiary">
+                Voice for this call
+              </p>
+              <VoicePicker
+                voices={voices}
+                activeVoiceId={voiceId}
+                menuCentered
+                onSelect={(id) => {
+                  if (id !== voiceId) {
+                    if (connected || busy) void end()
+                    onSelectVoice(id)
+                  }
+                }}
+                onManage={onManageVoices}
+                disabled={busy || connected}
               />
+            </section>
+          )}
+
+          <section className="w-full rounded-2xl border border-border/80 bg-elevated/55 px-5 py-6 backdrop-blur-xl sm:px-6 sm:py-7">
+            <div className="flex flex-col items-center gap-5">
+              <div className="rounded-full border border-border/80 bg-elevated/80 p-2 shadow-[0_0_32px_var(--color-accent-soft)]">
+                <BreathingVoiceOrb
+                  state={orbState}
+                  emotion="hopeful"
+                  level={connected ? (conversation.isSpeaking ? 0.9 : 0.35) : busy ? 0.45 : 0.2}
+                  className="h-32 w-32 sm:h-36 sm:w-36"
+                />
+              </div>
+              <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
+                {connected
+                  ? 'Hold the mic unmuted and talk. Your future self listens, then answers in your voice.'
+                  : 'Allow microphone access when prompted. One tap connects you for a live back-and-forth.'}
+              </p>
+            </div>
+          </section>
+
+          {error && (
+            <p className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
+              {error}
+            </p>
+          )}
+
+          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+            <p className="min-h-5 text-sm text-text-tertiary">
+              {busy ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+                  {statusLabel}
+                </span>
+              ) : (
+                statusLabel
+              )}
+            </p>
+
+            <div className="flex w-full flex-col items-stretch gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
+              {!connected ? (
+                <button
+                  type="button"
+                  onClick={() => void start()}
+                  disabled={!voiceId || busy}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-accent/60 bg-accent px-5 py-3 text-sm font-medium text-white shadow-[0_0_24px_var(--color-accent-soft)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
+                >
+                  <Phone size={16} />
+                  {busy ? 'Connecting…' : 'Connect with Your Future Self'}
+                </button>
+              ) : (
+                <div className="flex w-full items-center justify-center gap-2.5 sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border/80 bg-elevated/90 text-text-secondary transition hover:border-accent/60 hover:text-text-primary"
+                    aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  >
+                    {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void end()}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-red-500/40 bg-red-500/15 px-5 py-3 text-sm font-medium text-red-100 transition hover:bg-red-500/25 sm:flex-initial"
+                  >
+                    <PhoneOff size={16} />
+                    End call
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex w-full items-center justify-center rounded-full border border-border/80 bg-elevated/90 px-4 py-2.5 text-sm text-text-secondary transition hover:border-accent/60 hover:text-text-primary sm:w-auto"
+              >
+                Back to chat
+              </button>
             </div>
           </div>
-        </section>
-
-        {error && (
-          <p className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-center text-sm text-red-200">
-            {error}
-          </p>
-        )}
-
-        <p className="min-h-5 w-full text-center text-sm text-text-tertiary">
-          {busy ? (
-            <span className="inline-flex items-center justify-center gap-2">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
-              {statusLabel}
-            </span>
-          ) : (
-            statusLabel
-          )}
-        </p>
-
-        <div className="flex w-full flex-wrap items-center justify-center gap-3 pb-2">
-        {!connected ? (
-          <button
-            type="button"
-            onClick={() => void start()}
-            disabled={!voiceId || busy}
-            className="inline-flex items-center gap-2 rounded-full border border-accent/60 bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_24px_var(--color-accent-soft)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Phone size={16} />
-            {busy ? 'Connecting…' : 'Connect with Your Future Self'}
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={toggleMute}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/80 bg-elevated/90 text-text-secondary transition hover:border-accent/60 hover:text-text-primary"
-              aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-            >
-              {micMuted ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
-            <button
-              type="button"
-              onClick={() => void end()}
-              className="inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/15 px-5 py-2.5 text-sm font-medium text-red-100 transition hover:bg-red-500/25"
-            >
-              <PhoneOff size={16} />
-              End call
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-full border border-border/80 bg-elevated/90 px-4 py-2.5 text-sm text-text-secondary transition hover:border-accent/60 hover:text-text-primary"
-        >
-          Back to chat
-        </button>
         </div>
       </div>
     </div>
