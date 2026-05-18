@@ -239,7 +239,7 @@ export function ChatView({
         ref={logRef}
         role="log"
         aria-live="polite"
-        className="glass-panel min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-border/80 p-3"
+        className="glass-panel min-h-0 flex-1 space-y-3 overflow-hidden rounded-2xl border border-border/80 p-3"
       >
         <AnimatePresence initial={false}>
           {messages.map((message) => (

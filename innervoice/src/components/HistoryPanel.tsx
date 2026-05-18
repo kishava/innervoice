@@ -40,7 +40,7 @@ export function HistoryPanel({
             Close
           </button>
         </div>
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-2 overflow-hidden pr-1">
           {conversations.length === 0 ? (
             <p className="text-xs text-text-tertiary">No saved conversations yet.</p>
           ) : (

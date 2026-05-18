@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import { AudioLines, LogIn, UserPlus } from 'lucide-react'
 import { useAuth } from '../AuthContext'
+import { ErrorPopup } from './ErrorPopup'
 
 type Mode = 'login' | 'register'
 
@@ -39,6 +40,7 @@ export function AuthScreen() {
       transition={{ duration: 0.35 }}
       className="mx-auto flex h-full min-h-0 w-full max-w-sm flex-col items-center justify-center gap-3 py-1 sm:gap-4 sm:py-0"
     >
+      <ErrorPopup message={error} onClose={() => setError(null)} />
       <div className="glow-accent flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-white sm:h-16 sm:w-16">
         <AudioLines size={22} />
       </div>
@@ -91,10 +93,6 @@ export function AuthScreen() {
           minLength={6}
           className="min-h-11 rounded-xl border border-border bg-input-bg px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent/60"
         />
-
-        {error && (
-          <p className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger">{error}</p>
-        )}
 
         <button
           type="submit"

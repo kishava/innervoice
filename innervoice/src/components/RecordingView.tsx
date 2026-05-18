@@ -145,7 +145,7 @@ export function RecordingView({ onUseRecording }: Props) {
           </p>
         </div>
 
-        <div className="glass-panel min-h-[140px] overflow-y-auto rounded-2xl border border-border p-3 text-sm leading-relaxed text-text-secondary sm:p-4 lg:min-h-0 lg:max-h-none">
+        <div className="glass-panel min-h-[140px] overflow-hidden rounded-2xl border border-border p-3 text-sm leading-relaxed text-text-secondary sm:p-4 lg:min-h-0 lg:max-h-none">
           {TRAINING_PASSAGE.split('\n\n').map((paragraph, idx) => (
             <p key={idx} className={idx === 0 ? '' : 'mt-3'}>
               {paragraph}
@@ -214,7 +214,7 @@ export function RecordingView({ onUseRecording }: Props) {
         )}
 
         {audioUrl && (
-          <div className="glass-panel flex w-full flex-col gap-3 rounded-2xl border border-border p-3 lg:col-span-2 lg:max-h-[min(42vh,320px)] lg:overflow-y-auto">
+          <div className="glass-panel flex w-full flex-col gap-3 rounded-2xl border border-border p-3 lg:col-span-2 lg:max-h-[min(42vh,320px)] lg:overflow-hidden">
             <p className="text-xs font-medium text-text-secondary">Recorded sample</p>
             <audio controls src={audioUrl} className="w-full min-w-0" />
             {tooShortHint && !previewMeetsMin && (

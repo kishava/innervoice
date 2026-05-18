@@ -46,7 +46,7 @@ export function FollowUpSuggestions({ open, onClose, onSelect }: Props) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="suggestions-title"
-            className="glass-panel glow-accent max-h-[88dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-border p-4 shadow-2xl sm:p-5"
+            className="glass-panel glow-accent max-h-[88dvh] w-full max-w-md overflow-hidden rounded-2xl border border-border p-4 shadow-2xl sm:p-5"
             onClick={(event) => event.stopPropagation()}
           >
             <div>

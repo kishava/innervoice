@@ -11,6 +11,7 @@ import { BreathingVoiceOrb } from '../../components/BreathingVoiceOrb'
 import { buildLiveConversationOverrides } from '../../lib/liveFutureSelfPrompt'
 import { pickThinkingLabel } from '../../lib/thinkingLabels'
 import { VoicePicker } from '../../components/VoicePicker'
+import { ErrorPopup } from '../../components/ErrorPopup'
 import type { UserVoice } from '../../types'
 
 interface Props {
@@ -318,19 +319,20 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-3 py-3 sm:px-5 sm:py-4">
-        <div className="flex w-full max-w-md flex-col items-center gap-3 text-center sm:max-w-lg sm:gap-4">
-          <header className="w-full space-y-2">
-            <h2 className="text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
+      <ErrorPopup message={error} onClose={() => setError(null)} />
+      <div className="live-talk-shell flex min-h-0 flex-1 flex-col items-center overflow-hidden px-3 py-2 sm:px-5 sm:py-3">
+        <div className="live-talk-content flex h-full min-h-0 w-full max-w-3xl flex-col items-center justify-between gap-2 text-center">
+          <header className="live-talk-header w-full shrink-0 space-y-1">
+            <h2 className="live-talk-title text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
               Your Future Self is Here.
             </h2>
-            <p className="mx-auto max-w-sm text-sm leading-relaxed text-text-secondary">
+            <p className="live-talk-copy mx-auto max-w-sm text-sm leading-relaxed text-text-secondary">
               Same voice and presence as chat — speak naturally, like talking to someone who already knows you.
             </p>
           </header>
 
           {voices && voices.length > 0 && onSelectVoice && (
-            <section className="flex w-full flex-col items-center gap-2">
+            <section className="live-talk-voice flex w-full shrink-0 flex-col items-center gap-1.5">
               <p className="text-xs font-medium uppercase tracking-wide text-text-tertiary">
                 Voice for this call
               </p>
@@ -350,17 +352,17 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
             </section>
           )}
 
-          <section className="w-full rounded-2xl border border-border/80 bg-elevated/55 px-4 py-4 backdrop-blur-xl sm:px-5 sm:py-5">
-            <div className="flex flex-col items-center gap-3">
-              <div className="rounded-full border border-border/80 bg-elevated/80 p-2 shadow-[0_0_32px_var(--color-accent-soft)]">
+          <section className="live-talk-card flex min-h-0 w-full max-w-2xl flex-1 items-center justify-center rounded-2xl border border-border/80 bg-elevated/55 px-3 py-3 backdrop-blur-xl sm:px-5">
+            <div className="flex min-h-0 flex-col items-center justify-center gap-2">
+              <div className="rounded-full border border-border/80 bg-elevated/80 p-1.5 shadow-[0_0_32px_var(--color-accent-soft)]">
                 <BreathingVoiceOrb
                   state={orbState}
                   emotion="hopeful"
                   level={connected ? (conversation.isSpeaking ? 0.9 : 0.35) : busy ? 0.45 : 0.2}
-                  className="h-28 w-28 sm:h-32 sm:w-32"
+                  className="live-talk-orb h-24 w-24 sm:h-28 sm:w-28"
                 />
               </div>
-              <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
+              <p className="live-talk-card-copy max-w-md text-sm leading-relaxed text-text-secondary">
                 {connected
                   ? 'Hold the mic unmuted and talk. Your future self listens, then answers in your voice.'
                   : 'Allow microphone access when prompted. One tap connects you for a live back-and-forth.'}
@@ -368,13 +370,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
             </div>
           </section>
 
-          {error && (
-            <p className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
-              {error}
-            </p>
-          )}
-
-          <div className="flex w-full max-w-sm flex-col items-center gap-3">
+          <div className="live-talk-controls flex w-full max-w-sm shrink-0 flex-col items-center gap-2 pb-1">
             <p className="min-h-5 text-sm text-text-tertiary">
               {busy ? (
                 <span className="inline-flex items-center justify-center gap-2">
@@ -386,13 +382,13 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
               )}
             </p>
 
-            <div className="flex w-full flex-col items-stretch gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
+            <div className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
               {!connected ? (
                 <button
                   type="button"
                   onClick={() => void start()}
                   disabled={!voiceId || !userId || busy}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-accent/60 bg-accent px-5 py-3 text-sm font-medium text-white shadow-[0_0_24px_var(--color-accent-soft)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-accent/60 bg-accent px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_24px_var(--color-accent-soft)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
                 >
                   <Phone size={16} />
                   {busy ? 'Connecting…' : 'Connect with Your Future Self'}
@@ -410,7 +406,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
                   <button
                     type="button"
                     onClick={() => void end()}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-red-500/40 bg-red-500/15 px-5 py-3 text-sm font-medium text-red-100 transition hover:bg-red-500/25 sm:flex-initial"
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full border border-red-500/40 bg-red-500/15 px-5 py-2.5 text-sm font-medium text-red-100 transition hover:bg-red-500/25 sm:flex-initial"
                   >
                     <PhoneOff size={16} />
                     End call
@@ -420,7 +416,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
               <button
                 type="button"
                 onClick={onBack}
-                className="inline-flex w-full items-center justify-center rounded-full border border-border/80 bg-elevated/90 px-4 py-2.5 text-sm text-text-secondary transition hover:border-accent/60 hover:text-text-primary sm:w-auto"
+                className="inline-flex min-h-10 w-full items-center justify-center rounded-full border border-border/80 bg-elevated/90 px-4 py-2 text-sm text-text-secondary transition hover:border-accent/60 hover:text-text-primary sm:w-auto"
               >
                 Back to chat
               </button>

@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext'
 import { processAvatarFile } from '../lib/avatarImage'
 import { extractPaletteFromDataUrl } from '../lib/avatarPalette'
 import { ProfileAvatar } from './ProfileAvatar'
+import { ErrorPopup } from './ErrorPopup'
 
 interface Props {
   open: boolean
@@ -112,6 +113,7 @@ export function ProfilePanel({ open, onClose, voiceCount = 0, onOpenVoices }: Pr
           className="fixed inset-0 z-50 flex items-end justify-center bg-overlay p-3 backdrop-blur-sm sm:items-center sm:p-4"
           onClick={onClose}
         >
+          <ErrorPopup message={error} onClose={() => setError(null)} />
           <motion.div
             initial={{ opacity: 0, y: 24, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -119,7 +121,7 @@ export function ProfilePanel({ open, onClose, voiceCount = 0, onOpenVoices }: Pr
             role="dialog"
             aria-modal="true"
             aria-labelledby="profile-title"
-            className="glass-panel glow-accent max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-border p-4 shadow-2xl sm:p-5"
+            className="glass-panel glow-accent max-h-[92dvh] w-full max-w-md overflow-hidden rounded-2xl border border-border p-4 shadow-2xl sm:p-5"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex justify-end">
@@ -246,11 +248,6 @@ export function ProfilePanel({ open, onClose, voiceCount = 0, onOpenVoices }: Pr
                 )}
               </div>
 
-              {error && (
-                <p className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-2 text-xs text-danger">
-                  {error}
-                </p>
-              )}
               {saved && (
                 <p className="rounded-lg border border-accent/40 bg-accent-soft px-3 py-2 text-xs text-accent">
                   Profile saved.

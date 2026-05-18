@@ -8,6 +8,7 @@ import { readStoryFile, STORY_FILE_ACCEPT } from '../lib/readStoryFile'
 import { STORY_SCRIPT_MAX_CHARS, splitStoryIntoChunks } from '../lib/storyChunks'
 import type { Emotion, UserVoice } from '../types'
 import { VoicePicker } from './VoicePicker'
+import { ErrorPopup } from './ErrorPopup'
 
 interface Props {
   voiceId: string | null
@@ -60,6 +61,8 @@ export function StoryReaderView({
   const [script, setScript] = useState('')
   const [emotion, setEmotion] = useState<Emotion>('neutral')
   const [uploadName, setUploadName] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const { connect, setOrbState } = useAudioOrb()
@@ -85,7 +88,7 @@ export function StoryReaderView({
       setUploadName(file.name)
     } catch (err) {
       setUploadName(null)
-      alert(err instanceof Error ? err.message : 'Could not read file.')
+      setLocalError(err instanceof Error ? err.message : 'Could not read file.')
     }
   }, [])
 
@@ -105,6 +108,8 @@ export function StoryReaderView({
       : status === 'done'
         ? 100
         : 0
+  const popupMessage = localError ?? (!voiceId ? 'Complete Voice Train first - narration uses your ElevenLabs voice clone.' : error)
+  const shownMessage = popupMessage && popupMessage !== dismissedMessage ? popupMessage : null
 
   return (
     <motion.div
@@ -112,6 +117,13 @@ export function StoryReaderView({
       animate={{ opacity: 1, y: 0 }}
       className="flex h-full min-h-0 flex-col gap-3"
     >
+      <ErrorPopup
+        message={shownMessage}
+        onClose={() => {
+          if (localError) setLocalError(null)
+          setDismissedMessage(popupMessage)
+        }}
+      />
       <motion.div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="inline-flex items-center gap-2 text-sm font-medium text-text-secondary">
@@ -134,12 +146,6 @@ export function StoryReaderView({
           ← Back to Chat
         </button>
       </motion.div>
-
-      {!voiceId && (
-        <p className="rounded-xl border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
-          Complete Voice Train first — narration uses your ElevenLabs voice clone.
-        </p>
-      )}
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,360px)]">
         <div className="flex min-h-0 flex-col gap-2">
@@ -263,12 +269,6 @@ export function StoryReaderView({
           {ttsNotice && (
             <p className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-100">
               {ttsNotice}
-            </p>
-          )}
-
-          {error && (
-            <p className="rounded-lg border border-danger/40 bg-danger-soft px-2 py-1.5 text-xs text-danger">
-              {error}
             </p>
           )}
 

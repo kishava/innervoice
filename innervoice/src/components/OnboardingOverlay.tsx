@@ -30,7 +30,7 @@ export function OnboardingOverlay({ open, step, onNext, onBack, onSkip, onFinish
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-overlay p-3 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="glass-panel max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-border p-5 sm:p-6">
+      <div className="glass-panel max-h-[90dvh] w-full max-w-md overflow-hidden rounded-2xl border border-border p-5 sm:p-6">
         <h2 className="text-xl font-semibold text-text-primary">{current.title}</h2>
         <p className="mt-2 text-sm text-text-secondary">{current.text}</p>
         <div className="mt-4 flex gap-2">

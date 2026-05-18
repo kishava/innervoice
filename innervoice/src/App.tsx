@@ -19,6 +19,7 @@ import { ProfilePanel } from './components/ProfilePanel'
 import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { RecordingView } from './components/RecordingView'
 import { StoryReaderView } from './components/StoryReaderView'
+import { ErrorPopup } from './components/ErrorPopup'
 import { LiveTalkPage } from './features/liveTalk/LiveTalkPage'
 import { useConversations } from './hooks/useConversations'
 import type { AppStep, Emotion, Message } from './types'
@@ -100,6 +101,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem(ONBOARDED_KEY))
+  const [hideSystemError, setHideSystemError] = useState(false)
 
   const { conversations, activeId, setActiveId, saveConversation, loadConversation, deleteConversation } =
     useConversations()
@@ -264,7 +266,7 @@ export default function App() {
 
   const visibleError =
     error ??
-    (!hasBackend
+    (!hasBackend && !hideSystemError
       ? 'Missing Supabase config in .env. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
       : null)
 
@@ -279,7 +281,17 @@ export default function App() {
   )
 
   return (
-    <div className="orb-bg nebula-bg tech-grid relative min-h-dvh overflow-x-hidden bg-surface text-text-primary transition-colors duration-300">
+    <div className="orb-bg nebula-bg tech-grid relative min-h-dvh overflow-hidden bg-surface text-text-primary transition-colors duration-300">
+      <ErrorPopup
+        message={visibleError}
+        onClose={() => {
+          if (error) {
+            setError(null)
+            return
+          }
+          setHideSystemError(true)
+        }}
+      />
       <OnboardingOverlay
         open={showOnboarding && isAuthenticated}
         step={onboardingStep}
@@ -340,29 +352,15 @@ export default function App() {
           onOpenProfile={() => setShowProfile(true)}
         />
 
-        <div className="mb-2 flex min-h-5 flex-wrap items-center justify-between gap-2 text-xs text-text-tertiary">
-          <div className="flex min-w-0 items-center gap-2">
-            {demoMode && (
-              <span className="shrink-0 rounded-full border border-danger/40 bg-danger-soft px-2 py-0.5 text-danger">
-                Demo Mode
-              </span>
-            )}
-            {step === 'chat' && messages.length > 0 && <span className="truncate">{currentConversationTitle}</span>}
-          </div>
-        </div>
-
-        {visibleError && (
-          <div className="mb-2 rounded-xl border border-danger/40 bg-danger-soft p-2.5 text-sm text-danger">
-            <div className="flex items-start justify-between gap-2">
-              <p>{visibleError}</p>
-              <button
-                type="button"
-                aria-label="Dismiss error"
-                onClick={() => setError(null)}
-                className="text-xs text-danger"
-              >
-                Dismiss
-              </button>
+        {(demoMode || (step === 'chat' && messages.length > 0)) && (
+          <div className="mb-1 flex min-h-5 flex-wrap items-center justify-between gap-2 text-xs text-text-tertiary">
+            <div className="flex min-w-0 items-center gap-2">
+              {demoMode && (
+                <span className="shrink-0 rounded-full border border-danger/40 bg-danger-soft px-2 py-0.5 text-danger">
+                  Demo Mode
+                </span>
+              )}
+              {step === 'chat' && messages.length > 0 && <span className="truncate">{currentConversationTitle}</span>}
             </div>
           </div>
         )}
@@ -375,6 +373,8 @@ export default function App() {
           className={`min-h-0 flex-1 overflow-hidden ${
             step === 'chat'
               ? 'rounded-2xl border border-transparent bg-transparent p-0 shadow-none'
+              : step === 'live'
+                ? 'glass-panel glow-accent flex flex-col rounded-3xl border border-border/80 p-0 shadow-[0_12px_35px_rgb(0_0_0_/_0.26)]'
               : 'glass-panel glow-accent flex flex-col rounded-3xl border border-border/80 p-3 shadow-[0_12px_35px_rgb(0_0_0_/_0.26)] sm:p-4 lg:p-5'
           }`}
         >

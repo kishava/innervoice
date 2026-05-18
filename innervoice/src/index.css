@@ -185,12 +185,73 @@
   animation: ambient-slide 7s ease-in-out infinite alternate;
 }
 
+@media (max-height: 780px) {
+  .live-talk-shell {
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .live-talk-title {
+    display: none;
+  }
+
+  .live-talk-header,
+  .live-talk-content {
+    gap: 0.45rem;
+  }
+
+  .live-talk-copy,
+  .live-talk-card-copy {
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  .live-talk-card {
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+
+  .live-talk-orb {
+    width: 5.75rem;
+    height: 5.75rem;
+  }
+
+  .live-talk-controls {
+    gap: 0.4rem;
+  }
+}
+
+@media (max-height: 680px) {
+  .live-talk-copy {
+    display: none;
+  }
+
+  .live-talk-voice p {
+    display: none;
+  }
+
+  .live-talk-card-copy {
+    display: none;
+  }
+
+  .live-talk-card {
+    max-height: 11rem;
+  }
+
+  .live-talk-orb {
+    width: 5rem;
+    height: 5rem;
+  }
+}
+
 html,
 body,
 #root {
   margin: 0;
-  min-height: 100%;
-  overflow-x: hidden;
+  height: 100%;
+  max-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--color-surface);
   color: var(--color-text-primary);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
