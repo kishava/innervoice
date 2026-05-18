@@ -89,7 +89,14 @@ async function testGatewayWithUserSession() {
   })
 
   const { data, error } = await authed.functions.invoke('ai-gateway', {
-    body: { action: 'getConversationToken' },
+    body: {
+      action: 'chatCompletion',
+      request: {
+        model: 'gpt-4o-mini',
+        max_tokens: 8,
+        messages: [{ role: 'user', content: 'Reply with OK only.' }],
+      },
+    },
   })
 
   if (error) {
@@ -102,7 +109,7 @@ async function testGatewayWithUserSession() {
     return
   }
 
-  console.log('ai-gateway test OK (getConversationToken)')
+  console.log('ai-gateway test OK (chatCompletion)')
   await admin.auth.admin.deleteUser(created.user.id)
 }
 

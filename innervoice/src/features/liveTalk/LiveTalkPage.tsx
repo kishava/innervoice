@@ -3,7 +3,7 @@ import { ConversationProvider, useConversation } from '@elevenlabs/react'
 import type { DisconnectionDetails } from '@elevenlabs/client'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { stripAudioTags } from '../../api/elevenlabs'
-import { fetchConversationToken } from '../../api/liveConversation'
+import { getElevenLabsAgentId } from '../../lib/elevenLabsConvai'
 import { getGreetingResponse } from '../../api/openai'
 import { useAuth } from '../../AuthContext'
 import { useAudioOrb } from '../../contexts/AudioOrbContext'
@@ -259,7 +259,8 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         await new Promise((r) => window.setTimeout(r, 300))
       }
 
-      const token = await fetchConversationToken(voiceId)
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+
       let firstMessage: string | undefined
       try {
         const greetingTagged = await getGreetingResponse(user?.name)
@@ -267,11 +268,11 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       } catch {
         /* use shared fallback greeting */
       }
-      const overrides = buildLiveConversationOverrides(user?.name, firstMessage)
+      const overrides = buildLiveConversationOverrides(user?.name, firstMessage, voiceId)
       const waitForConnected = waitUntilConnected()
 
       conversation.startSession({
-        conversationToken: token,
+        agentId: getElevenLabsAgentId(),
         connectionType: 'webrtc',
         overrides,
         dynamicVariables: user?.name ? { user_name: user.name } : undefined,
