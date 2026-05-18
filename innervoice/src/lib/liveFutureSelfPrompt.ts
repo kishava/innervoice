@@ -12,7 +12,7 @@ export function liveFutureSelfFirstMessage(userName?: string) {
 }
 
 /** Live talk: per-session voice + prompt overrides via ElevenLabs React SDK. */
-export function buildLiveConversationOverrides(userName?: string, firstMessage?: string) {
+export function buildLiveConversationOverrides(userName?: string, firstMessage?: string, voiceId?: string | null) {
   return {
     agent: {
       prompt: {
@@ -21,5 +21,7 @@ export function buildLiveConversationOverrides(userName?: string, firstMessage?:
       firstMessage: firstMessage?.trim() || liveFutureSelfFirstMessage(userName),
       language: 'en' as const,
     },
+    tts: voiceId?.trim() ? { voiceId: voiceId.trim() } : undefined,
+    conversation: { textOnly: false },
   }
 }
