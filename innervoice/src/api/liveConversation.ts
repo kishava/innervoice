@@ -17,8 +17,12 @@ export async function fetchConversationToken(voiceId: string): Promise<string> {
     agentId: INNERVOICE_AGENT_ID,
     voiceId: trimmed,
   })
-  if (!data.token) {
+  const token = data.token.trim()
+  if (!token) {
     throw new Error('Could not start live voice session.')
   }
-  return data.token
+  if (token.split('.').length !== 3) {
+    throw new Error('Server returned an invalid conversation token. Try again or log out and sign in.')
+  }
+  return token
 }

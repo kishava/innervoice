@@ -4,7 +4,6 @@ import type { DisconnectionDetails } from '@elevenlabs/client'
 import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { stripAudioTags } from '../../api/elevenlabs'
 import { fetchConversationToken } from '../../api/liveConversation'
-import { getElevenLabsAgentId } from '../../lib/elevenLabsConvai'
 import { getGreetingResponse } from '../../api/openai'
 import { useAuth } from '../../AuthContext'
 import { useAudioOrb } from '../../contexts/AudioOrbContext'
@@ -29,36 +28,6 @@ type ConnectWaiter = {
 
 const LIVE_CALL_ENDED_HINT =
   'Call ended unexpectedly. Allow microphone access, confirm your voice in My voices, then try again.'
-
-// #region agent log
-function dbg(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  fetch('http://127.0.0.1:7557/ingest/69d83c9c-05f0-432b-b66d-2c89382c215d', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '996712' },
-    body: JSON.stringify({
-      sessionId: '996712',
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-  try {
-    const key = 'innervoice-debug-996712'
-    const prev = JSON.parse(sessionStorage.getItem(key) ?? '[]') as unknown[]
-    prev.push({ hypothesisId, location, message, data, timestamp: Date.now() })
-    sessionStorage.setItem(key, JSON.stringify(prev.slice(-40)))
-  } catch {
-    /* ignore */
-  }
-}
-// #endregion
 
 function isOpaqueDisconnectContext(context: unknown): boolean {
   if (!context || typeof context !== 'object') return false
@@ -120,7 +89,7 @@ export function LiveTalkPage({ voiceId, voices, onSelectVoice, onManageVoices, o
 }
 
 function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onBack }: Props) {
-  const { user } = useAuth()
+  const { user, userId } = useAuth()
   const { setOrbState } = useAudioOrb()
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -155,13 +124,6 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       hadConnectedRef.current = true
     },
     onDisconnect: (details) => {
-      // #region agent log
-      dbg('H1-H5', 'LiveTalkPage.tsx:onDisconnect', 'disconnect', {
-        reason: details?.reason ?? null,
-        endingRef: endingRef.current,
-        hadConnected: hadConnectedRef.current,
-      })
-      // #endregion
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
@@ -173,12 +135,6 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     },
     onError: (message) => {
       const detail = typeof message === 'string' ? message : 'Live voice connection failed.'
-      // #region agent log
-      dbg('H1-H4-H6', 'LiveTalkPage.tsx:onError', 'sdk error', {
-        detail: detail.slice(0, 200),
-        type: typeof message,
-      })
-      // #endregion
       setError(detail)
       setInCall(false)
       setConnecting(false)
@@ -190,9 +146,6 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       setOrbState(mode.mode === 'speaking' ? 'speaking' : 'listening')
     },
     onStatusChange: (status) => {
-      // #region agent log
-      dbg('H5', 'LiveTalkPage.tsx:onStatusChange', 'status', { status: status.status })
-      // #endregion
       if (status.status === 'connecting') setOrbState('processing')
       if (status.status === 'connected') {
         setInCall(true)
@@ -292,15 +245,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     })
 
   const start = async () => {
-    if (!voiceId || busy || connected) return
-    // #region agent log
-    dbg('H3-H4', 'LiveTalkPage.tsx:start', 'start tapped', {
-      voiceIdLen: voiceId.length,
-      agentId: getElevenLabsAgentId(),
-      busy,
-      connected,
-    })
-    // #endregion
+    if (!voiceId || !userId || busy || connected) return
     setConnecting(true)
     setError(null)
     setInCall(false)
@@ -314,19 +259,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         await new Promise((r) => window.setTimeout(r, 300))
       }
 
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true })
-        // #region agent log
-        dbg('H2', 'LiveTalkPage.tsx:start', 'getUserMedia ok', {})
-        // #endregion
-      } catch (micErr) {
-        // #region agent log
-        dbg('H2', 'LiveTalkPage.tsx:start', 'getUserMedia failed', {
-          err: micErr instanceof Error ? micErr.name : 'unknown',
-        })
-        // #endregion
-        throw micErr
-      }
+      await navigator.mediaDevices.getUserMedia({ audio: true })
 
       let firstMessage: string | undefined
       try {
@@ -338,41 +271,18 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       const overrides = buildLiveConversationOverrides(user?.name, firstMessage)
       const waitForConnected = waitUntilConnected()
 
-      // #region agent log
-      dbg('H4-H6', 'LiveTalkPage.tsx:start', 'before startSession', {
-        mode: 'webrtc-token',
-        agentId: getElevenLabsAgentId(),
-        voiceIdLen: voiceId.length,
-      })
-      // #endregion
-
       const token = await fetchConversationToken(voiceId)
 
-      // #region agent log
-      dbg('H4', 'LiveTalkPage.tsx:start', 'token received', { tokenLen: token.length })
-      // #endregion
-
-      const sessionId = await conversation.startSession({
+      await conversation.startSession({
         conversationToken: token,
         connectionType: 'webrtc',
         overrides,
         dynamicVariables: user?.name ? { user_name: user.name } : undefined,
       })
 
-      // #region agent log
-      dbg('H5', 'LiveTalkPage.tsx:start', 'startSession resolved', {
-        sessionId: sessionId ?? null,
-      })
-      // #endregion
-
       await waitForConnected
       setInCall(true)
     } catch (err) {
-      // #region agent log
-      dbg('H2-H5', 'LiveTalkPage.tsx:start', 'start catch', {
-        err: err instanceof Error ? err.message.slice(0, 200) : String(err),
-      })
-      // #endregion
       setError(err instanceof Error ? err.message : 'Could not start live call.')
       setInCall(false)
       setOrbState('idle')
@@ -408,8 +318,8 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6">
-        <div className="flex w-full max-w-md flex-col items-center gap-5 text-center sm:max-w-lg sm:gap-6">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-3 py-3 sm:px-5 sm:py-4">
+        <div className="flex w-full max-w-md flex-col items-center gap-3 text-center sm:max-w-lg sm:gap-4">
           <header className="w-full space-y-2">
             <h2 className="text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
               Your Future Self is Here.
@@ -440,14 +350,14 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
             </section>
           )}
 
-          <section className="w-full rounded-2xl border border-border/80 bg-elevated/55 px-5 py-6 backdrop-blur-xl sm:px-6 sm:py-7">
-            <div className="flex flex-col items-center gap-5">
+          <section className="w-full rounded-2xl border border-border/80 bg-elevated/55 px-4 py-4 backdrop-blur-xl sm:px-5 sm:py-5">
+            <div className="flex flex-col items-center gap-3">
               <div className="rounded-full border border-border/80 bg-elevated/80 p-2 shadow-[0_0_32px_var(--color-accent-soft)]">
                 <BreathingVoiceOrb
                   state={orbState}
                   emotion="hopeful"
                   level={connected ? (conversation.isSpeaking ? 0.9 : 0.35) : busy ? 0.45 : 0.2}
-                  className="h-32 w-32 sm:h-36 sm:w-36"
+                  className="h-28 w-28 sm:h-32 sm:w-32"
                 />
               </div>
               <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
@@ -464,7 +374,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
             </p>
           )}
 
-          <div className="flex w-full max-w-sm flex-col items-center gap-4">
+          <div className="flex w-full max-w-sm flex-col items-center gap-3">
             <p className="min-h-5 text-sm text-text-tertiary">
               {busy ? (
                 <span className="inline-flex items-center justify-center gap-2">
@@ -481,7 +391,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
                 <button
                   type="button"
                   onClick={() => void start()}
-                  disabled={!voiceId || busy}
+                  disabled={!voiceId || !userId || busy}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-accent/60 bg-accent px-5 py-3 text-sm font-medium text-white shadow-[0_0_24px_var(--color-accent-soft)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
                 >
                   <Phone size={16} />

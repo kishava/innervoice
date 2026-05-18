@@ -339,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       userId,
-      isAuthenticated: Boolean(user),
+      isAuthenticated: Boolean(user && userId),
       postAuthStep,
       clearPostAuthStep,
       register,

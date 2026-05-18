@@ -33,8 +33,36 @@ async function gatewayErrorMessage(error: unknown): Promise<string> {
       /* use fallback below */
     }
   }
-  if (error instanceof Error && error.message) return error.message
+  if (error instanceof Error && error.message) {
+    if (/invalid jwt/i.test(error.message)) {
+      return 'Session expired or invalid. Log out, sign in again, then retry Talk.'
+    }
+    return error.message
+  }
   return 'Unable to reach backend gateway.'
+}
+
+/** Attach a fresh user JWT when available; omit if missing (ai-gateway allows anon when verify_jwt is off). */
+async function optionalAuthHeaders(): Promise<Record<string, string>> {
+  if (!supabase) return {}
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError || !sessionData.session?.access_token) return {}
+
+  let accessToken = sessionData.session.access_token
+  const expiresAt = sessionData.session.expires_at
+  const expiresSoon =
+    typeof expiresAt === 'number' && expiresAt * 1000 < Date.now() + 60_000
+
+  if (expiresSoon) {
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+    if (!refreshError && refreshed.session?.access_token) {
+      accessToken = refreshed.session.access_token
+    }
+  }
+
+  if (!accessToken) return {}
+  return { Authorization: `Bearer ${accessToken}` }
 }
 
 export async function invokeGateway<T>(action: string, payload: Record<string, unknown>): Promise<T> {
@@ -44,6 +72,7 @@ export async function invokeGateway<T>(action: string, payload: Record<string, u
 
   const { data, error } = await supabase.functions.invoke<GatewayResponse<T>>('ai-gateway', {
     body: { action, ...payload },
+    headers: await optionalAuthHeaders(),
   })
 
   if (error) {
@@ -73,4 +102,3 @@ export function base64ToBlob(base64: string, mimeType: string): Blob {
   }
   return new Blob([bytes], { type: mimeType })
 }
-
