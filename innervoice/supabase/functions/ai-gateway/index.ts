@@ -5,6 +5,19 @@ const CORS_HEADERS = {
 
 type GatewayResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
+class GatewayHttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+type AuthenticatedUser = {
+  id: string
+}
+
 type ChatRequest = {
   model: string
   temperature?: number
@@ -13,6 +26,17 @@ type ChatRequest = {
   frequency_penalty?: number
   messages: Array<{ role: string; content: string }>
 }
+
+const DEFAULT_ELEVENLABS_VOICE_IDS = new Set([
+  '21m00Tcm4TlvDq8ikWAM',
+  'pNInz6obpgDQGcFmaJgB',
+  'EXAVITQu4vr4xnSDxMaL',
+  'ErXwobaYiN019PkySvjV',
+  'TxGEqnHWrfWFTfGW9XjX',
+  'MF3mGyEYCl7XYWbV9V6O',
+  'yoZ06aMxZJJ28mfd3POQ',
+  'AZnzlk1XvdvUeBnXmlld',
+])
 
 function json<T>(status: number, body: GatewayResult<T>) {
   return new Response(JSON.stringify(body), {
@@ -45,6 +69,126 @@ async function readErrorText(response: Response) {
     return text.slice(0, 400)
   } catch {
     return response.statusText
+  }
+}
+
+function getSupabaseUrl() {
+  const url = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '')
+  if (!url) throw new Error('SUPABASE_URL is missing in Supabase secrets.')
+  return url
+}
+
+function getSupabaseAnonKey() {
+  const key = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!key) throw new Error('SUPABASE_ANON_KEY is missing in Supabase secrets.')
+  return key
+}
+
+function getSupabaseServiceRoleKey() {
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing in Supabase secrets.')
+  return key
+}
+
+function getBearerAuthorization(request: Request) {
+  const authorization = request.headers.get('Authorization') ?? ''
+  if (!authorization.match(/^Bearer\s+\S+$/i)) {
+    throw new GatewayHttpError(401, 'Sign in to use the backend gateway.')
+  }
+  return authorization
+}
+
+async function getAuthenticatedUser(request: Request): Promise<AuthenticatedUser> {
+  const response = await fetch(`${getSupabaseUrl()}/auth/v1/user`, {
+    headers: {
+      apikey: getSupabaseAnonKey(),
+      Authorization: getBearerAuthorization(request),
+    },
+  })
+
+  if (!response.ok) {
+    throw new GatewayHttpError(401, 'Sign in to use the backend gateway.')
+  }
+
+  const data = (await response.json()) as { id?: string }
+  if (!data.id) throw new GatewayHttpError(401, 'Sign in to use the backend gateway.')
+  return { id: data.id }
+}
+
+async function fetchSupabaseRows<T>(table: string, filters: Record<string, string>) {
+  const url = new URL(`${getSupabaseUrl()}/rest/v1/${table}`)
+  url.searchParams.set('select', filters.select ?? '*')
+  for (const [key, value] of Object.entries(filters)) {
+    if (key !== 'select') url.searchParams.set(key, value)
+  }
+
+  const serviceRoleKey = getSupabaseServiceRoleKey()
+  const response = await fetch(url, {
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Could not verify voice ownership (${response.status}): ${await readErrorText(response)}`)
+  }
+
+  const data = await response.json()
+  return Array.isArray(data) ? (data as T[]) : []
+}
+
+async function getVoiceReferenceState(userId: string, voiceId: string) {
+  const [voiceRows, profileRows] = await Promise.all([
+    fetchSupabaseRows<{ user_id?: string }>('user_voices', {
+      select: 'user_id',
+      elevenlabs_voice_id: `eq.${voiceId}`,
+    }),
+    fetchSupabaseRows<{ id?: string }>('profiles', {
+      select: 'id',
+      voice_id: `eq.${voiceId}`,
+    }),
+  ])
+
+  const referencedUserIds = new Set<string>()
+  for (const row of voiceRows) {
+    if (typeof row.user_id === 'string') referencedUserIds.add(row.user_id)
+  }
+  for (const row of profileRows) {
+    if (typeof row.id === 'string') referencedUserIds.add(row.id)
+  }
+
+  return {
+    ownedByCaller: referencedUserIds.has(userId),
+    referencedByAnyUser: referencedUserIds.size > 0,
+    referencedByOtherUser: [...referencedUserIds].some((referencedUserId) => referencedUserId !== userId),
+  }
+}
+
+async function assertVoiceUsableByUser(user: AuthenticatedUser, voiceId: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('voiceId is required.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(id)) return
+
+  const references = await getVoiceReferenceState(user.id, id)
+  if (!references.ownedByCaller) {
+    throw new GatewayHttpError(403, 'This voice is not linked to your account. Select one of your saved voices or a default voice.')
+  }
+}
+
+async function assertVoiceDeletableByUser(user: AuthenticatedUser, voiceId: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('voiceId is required.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(id)) {
+    throw new GatewayHttpError(403, 'Default voices cannot be deleted.')
+  }
+
+  const references = await getVoiceReferenceState(user.id, id)
+  if (references.referencedByOtherUser) {
+    throw new GatewayHttpError(403, 'This voice is linked to another account.')
+  }
+  if (references.referencedByAnyUser && !references.ownedByCaller) {
+    throw new GatewayHttpError(403, 'This voice is not linked to your account.')
   }
 }
 
@@ -96,12 +240,13 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
   return { voiceId: data.voice_id as string }
 }
 
-async function deleteVoice(payload: { voiceId: string }) {
+async function deleteVoice(payload: { voiceId: string }, user: AuthenticatedUser) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
 
   const voiceId = String(payload.voiceId ?? '').trim()
   if (!voiceId) throw new Error('voiceId is required.')
+  await assertVoiceDeletableByUser(user, voiceId)
 
   const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
     method: 'DELETE',
@@ -164,9 +309,11 @@ async function textToSpeech(payload: {
   outputFormat: string
   realtime: boolean
   emotion?: string
-}) {
+}, user: AuthenticatedUser) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+  const voiceId = String(payload.voiceId ?? '').trim()
+  await assertVoiceUsableByUser(user, voiceId)
 
   const headers = {
     'Content-Type': 'application/json',
@@ -180,7 +327,7 @@ async function textToSpeech(payload: {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        inputs: [{ text: payload.text, voice_id: payload.voiceId }],
+        inputs: [{ text: payload.text, voice_id: voiceId }],
         model_id: 'eleven_v3',
         settings: { stability: payload.stability },
         apply_text_normalization: 'off',
@@ -198,7 +345,7 @@ async function textToSpeech(payload: {
 
   const latencyParam = payload.realtime ? '&optimize_streaming_latency=3' : ''
   const speechV3 = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${payload.voiceId}?output_format=${payload.outputFormat}${latencyParam}`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${payload.outputFormat}${latencyParam}`,
     {
       method: 'POST',
       headers,
@@ -228,7 +375,7 @@ async function textToSpeech(payload: {
   // v2 fallback — tag-free but emotionally tuned per user emotion.
   const v2Settings = v2SettingsForEmotion(payload.emotion ?? 'neutral')
   const speechV2 = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${payload.voiceId}?output_format=${payload.outputFormat}`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${payload.outputFormat}`,
     {
       method: 'POST',
       headers,
@@ -310,16 +457,6 @@ async function transcribeAudio(payload: {
 }
 
 const DEFAULT_AGENT_ID = 'agent_9401krssabvyfd4bkam1tamgw70g'
-const DEFAULT_ELEVENLABS_VOICE_IDS = new Set([
-  '21m00Tcm4TlvDq8ikWAM',
-  'pNInz6obpgDQGcFmaJgB',
-  'EXAVITQu4vr4xnSDxMaL',
-  'ErXwobaYiN019PkySvjV',
-  'TxGEqnHWrfWFTfGW9XjX',
-  'MF3mGyEYCl7XYWbV9V6O',
-  'yoZ06aMxZJJ28mfd3POQ',
-  'AZnzlk1XvdvUeBnXmlld',
-])
 
 async function assertVoiceExists(voiceId: string, key: string) {
   const id = voiceId.trim()
@@ -377,7 +514,7 @@ async function ensureLivePromptOverrides(agentId: string, key: string) {
 }
 
 /** Mint WebRTC token + prepare InnerVoice agent (voice on agent, prompt via client overrides). */
-async function getConversationToken(payload: { agentId?: string; voiceId?: string }) {
+async function getConversationToken(payload: { agentId?: string; voiceId?: string }, user: AuthenticatedUser) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
 
@@ -386,6 +523,7 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
   if (!agentId) throw new Error('agentId is required for live talk.')
   if (!voiceId) throw new Error('voiceId is required for live talk.')
 
+  await assertVoiceUsableByUser(user, voiceId)
   await assertVoiceExists(voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
 
@@ -405,7 +543,7 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
 }
 
 /** Mint WebSocket signed URL + prepare InnerVoice agent for client-side audio streaming. */
-async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }) {
+async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }, user: AuthenticatedUser) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
 
@@ -414,6 +552,7 @@ async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: s
   if (!agentId) throw new Error('agentId is required for live talk.')
   if (!voiceId) throw new Error('voiceId is required for live talk.')
 
+  await assertVoiceUsableByUser(user, voiceId)
   await assertVoiceExists(voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
 
@@ -438,6 +577,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const user = await getAuthenticatedUser(request)
     const payload = await request.json()
     const action = String(payload?.action ?? '')
 
@@ -461,6 +601,7 @@ Deno.serve(async (request) => {
             realtime: boolean
             emotion?: string
           },
+          user,
         )
         return json(200, { ok: true, data })
       }
@@ -471,15 +612,15 @@ Deno.serve(async (request) => {
         return json(200, { ok: true, data })
       }
       case 'getConversationToken': {
-        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string })
+        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string }, user)
         return json(200, { ok: true, data })
       }
       case 'getConversationSignedUrl': {
-        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string })
+        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string }, user)
         return json(200, { ok: true, data })
       }
       case 'deleteVoice': {
-        const data = await deleteVoice(payload as { voiceId: string })
+        const data = await deleteVoice(payload as { voiceId: string }, user)
         return json(200, { ok: true, data })
       }
       default:
@@ -487,6 +628,7 @@ Deno.serve(async (request) => {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown backend error.'
-    return json(500, { ok: false, error: message })
+    const status = error instanceof GatewayHttpError ? error.status : 500
+    return json(status, { ok: false, error: message })
   }
 })
