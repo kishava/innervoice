@@ -28,6 +28,13 @@ type ConnectWaiter = {
   cancel: () => void
 }
 
+class LiveStartCancelledError extends Error {
+  constructor() {
+    super('Live call start was cancelled.')
+    this.name = 'LiveStartCancelledError'
+  }
+}
+
 const LIVE_CALL_ENDED_HINT =
   'Call ended unexpectedly. Allow microphone access, confirm your voice in My voices, then try again.'
 const LIVE_CONNECT_TIMEOUT_MS = 25_000
@@ -49,6 +56,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 function hasSecureLiveVoiceContext() {
   return window.isSecureContext || LOCAL_HOSTNAMES.has(window.location.hostname)
+}
+
+function isLiveStartCancelled(error: unknown) {
+  return error instanceof LiveStartCancelledError
 }
 
 function isOpaqueDisconnectContext(context: unknown): boolean {
@@ -120,15 +131,23 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
   const [statusLabel, setStatusLabel] = useState('Tap below when you’re ready to talk')
   const [connectHint, setConnectHint] = useState<string | null>(null)
   const connectWaitRef = useRef<ConnectWaiter | null>(null)
+  const endSessionRef = useRef<() => void>(() => undefined)
   const endingRef = useRef(false)
   const hadConnectedRef = useRef(false)
   const lastDebugRef = useRef<string | null>(null)
   const heardAgentRef = useRef(false)
   const firstResponseTimerRef = useRef<number | null>(null)
+  const endResetTimerRef = useRef<number | null>(null)
+  const mountedRef = useRef(false)
+  const startRunRef = useRef(0)
+  const sessionEventsEnabledRef = useRef(false)
 
   const cancelConnectWait = useCallback(() => {
-    connectWaitRef.current?.cancel()
+    const waiter = connectWaitRef.current
     connectWaitRef.current = null
+    if (!waiter) return
+    waiter.cancel()
+    waiter.reject(new LiveStartCancelledError())
   }, [])
 
   const cancelFirstResponseTimer = useCallback(() => {
@@ -162,6 +181,12 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     micMuted,
     volume: 1,
     onConnect: () => {
+      if (!sessionEventsEnabledRef.current || endingRef.current) {
+        setInCall(false)
+        setConnecting(false)
+        setOrbState('idle')
+        return
+      }
       setError(null)
       setInCall(true)
       hadConnectedRef.current = true
@@ -171,6 +196,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
+      sessionEventsEnabledRef.current = false
       if (connectWaitRef.current) {
         const detail = disconnectMessage(details) ?? lastDebugRef.current ?? LIVE_CALL_ENDED_HINT
         rejectConnectWait(detail)
@@ -188,9 +214,11 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       setInCall(false)
       setConnecting(false)
       setOrbState('idle')
+      sessionEventsEnabledRef.current = false
       rejectConnectWait(detail)
     },
     onMessage: (message) => {
+      if (!sessionEventsEnabledRef.current) return
       if (import.meta.env.DEV) console.debug('[LiveTalk message]', message)
       if (message.role === 'agent' || message.source === 'ai') {
         heardAgentRef.current = true
@@ -198,16 +226,24 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       }
     },
     onAudio: () => {
+      if (!sessionEventsEnabledRef.current) return
       if (import.meta.env.DEV) console.debug('[LiveTalk audio]')
       heardAgentRef.current = true
       cancelFirstResponseTimer()
     },
     onModeChange: (mode) => {
+      if (!sessionEventsEnabledRef.current) return
       setOrbState(mode.mode === 'speaking' ? 'speaking' : 'listening')
     },
     onStatusChange: (status) => {
       if (status.status === 'connecting') setOrbState('processing')
       if (status.status === 'connected') {
+        if (!sessionEventsEnabledRef.current || endingRef.current) {
+          setInCall(false)
+          setConnecting(false)
+          setOrbState('idle')
+          return
+        }
         setInCall(true)
         setConnecting(false)
         setError(null)
@@ -218,6 +254,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       if (status.status === 'disconnected') {
         setInCall(false)
         setConnecting(false)
+        sessionEventsEnabledRef.current = false
         if (connectWaitRef.current && !endingRef.current) {
           rejectConnectWait(lastDebugRef.current ?? LIVE_CALL_ENDED_HINT)
         }
@@ -256,6 +293,32 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
   useEffect(() => {
     syncOrb(conversation.status, conversation.isSpeaking)
   }, [conversation.status, conversation.isSpeaking, syncOrb])
+
+  useEffect(() => {
+    endSessionRef.current = () => conversation.endSession()
+  }, [conversation])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      startRunRef.current += 1
+      endingRef.current = true
+      sessionEventsEnabledRef.current = false
+      cancelConnectWait()
+      cancelFirstResponseTimer()
+      if (endResetTimerRef.current !== null) {
+        window.clearTimeout(endResetTimerRef.current)
+        endResetTimerRef.current = null
+      }
+      try {
+        endSessionRef.current()
+      } catch {
+        /* ignore */
+      }
+      setOrbState('idle')
+    }
+  }, [cancelConnectWait, cancelFirstResponseTimer, setOrbState])
 
   useEffect(() => {
     if (!busy && !connected) {
@@ -325,12 +388,22 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       setError('This browser cannot start live voice because microphone access is unavailable. Try Chrome or Edge on localhost/HTTPS.')
       return
     }
+    const runId = startRunRef.current + 1
+    startRunRef.current = runId
+
+    const assertCurrentStart = () => {
+      if (!mountedRef.current || startRunRef.current !== runId || endingRef.current) {
+        throw new LiveStartCancelledError()
+      }
+    }
+
     setConnecting(true)
     setConnectHint('Preparing your live voice...')
     setError(null)
     setInCall(false)
     setOrbState('processing')
     endingRef.current = false
+    sessionEventsEnabledRef.current = false
     hadConnectedRef.current = false
     heardAgentRef.current = false
     cancelFirstResponseTimer()
@@ -339,6 +412,7 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
       if (conversation.status !== 'disconnected') {
         conversation.endSession()
         await new Promise((r) => window.setTimeout(r, 300))
+        assertCurrentStart()
       }
 
       let firstMessage: string | undefined
@@ -349,12 +423,14 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
           LIVE_GREETING_TIMEOUT_MS,
           'Greeting took too long.',
         )
+        assertCurrentStart()
         firstMessage = stripAudioTags(greetingTagged).trim() || undefined
       } catch {
         /* use shared fallback greeting */
       }
       const overrides = buildLiveConversationOverrides(user?.name, firstMessage, voiceId)
 
+      assertCurrentStart()
       setConnectHint('Preparing your live voice...')
       const signedUrl = await withTimeout(
         fetchConversationSignedUrl(voiceId),
@@ -362,8 +438,10 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         'Could not prepare the live voice session. Check your ElevenLabs/Supabase setup and try again.',
       )
 
+      assertCurrentStart()
       setConnectHint('Opening the live room...')
       const waitForConnected = waitUntilConnected()
+      sessionEventsEnabledRef.current = true
       await conversation.startSession({
         signedUrl,
         connectionType: 'websocket',
@@ -371,7 +449,9 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         dynamicVariables: user?.name ? { user_name: user.name } : undefined,
       })
 
+      assertCurrentStart()
       await waitForConnected
+      assertCurrentStart()
       setConnectHint(null)
       setInCall(true)
       conversation.setVolume({ volume: 1 })
@@ -389,9 +469,14 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         }
       }, LIVE_FIRST_RESPONSE_FALLBACK_MS)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start live call.')
-      setInCall(false)
-      setOrbState('idle')
+      if (!isLiveStartCancelled(err)) {
+        setError(err instanceof Error ? err.message : 'Could not start live call.')
+      }
+      sessionEventsEnabledRef.current = false
+      if (mountedRef.current && startRunRef.current === runId) {
+        setInCall(false)
+        setOrbState('idle')
+      }
       cancelConnectWait()
       try {
         conversation.endSession()
@@ -399,16 +484,24 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
         /* ignore */
       }
     } finally {
-      setConnecting(false)
-      setConnectHint(null)
+      if (mountedRef.current && startRunRef.current === runId) {
+        setConnecting(false)
+        setConnectHint(null)
+      }
     }
   }
 
   const end = async () => {
+    startRunRef.current += 1
     endingRef.current = true
+    sessionEventsEnabledRef.current = false
     setError(null)
     cancelConnectWait()
     cancelFirstResponseTimer()
+    if (endResetTimerRef.current !== null) {
+      window.clearTimeout(endResetTimerRef.current)
+      endResetTimerRef.current = null
+    }
     try {
       conversation.endSession()
     } catch {
@@ -419,8 +512,9 @@ function LiveTalkPageInner({ voiceId, voices, onSelectVoice, onManageVoices, onB
     setConnectHint(null)
     setOrbState('idle')
     hadConnectedRef.current = false
-    window.setTimeout(() => {
+    endResetTimerRef.current = window.setTimeout(() => {
       endingRef.current = false
+      endResetTimerRef.current = null
     }, 300)
   }
 

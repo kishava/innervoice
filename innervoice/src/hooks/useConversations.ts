@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Conversation, Message } from '../types'
 import { useAuth } from '../AuthContext'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
@@ -31,6 +31,8 @@ export function useConversations() {
   const { isAuthenticated } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(() => readActiveConversationId())
+  const saveQueuesRef = useRef(new Map<string, Promise<void>>())
+  const deletedConversationIdsRef = useRef(new Set<string>())
 
   useEffect(() => {
     if (!isAuthenticated || !isSupabaseConfigured || !supabase) {
@@ -119,11 +121,20 @@ export function useConversations() {
       setConversations((prev) => {
         const now = Date.now()
         let next: Conversation[]
-        let targetConversationId = activeId
+        let targetConversation: Conversation
         if (activeId) {
           next = prev.map((item) =>
             item.id === activeId ? { ...item, messages, updatedAt: now, title: makeTitle(messages) } : item,
           )
+          targetConversation =
+            next.find((item) => item.id === activeId) ?? {
+              id: activeId,
+              title: makeTitle(messages),
+              voiceId,
+              messages,
+              createdAt: now,
+              updatedAt: now,
+            }
         } else {
           const created: Conversation = {
             id: crypto.randomUUID(),
@@ -135,47 +146,64 @@ export function useConversations() {
           }
           next = [created, ...prev]
           setActiveId(created.id)
-          targetConversationId = created.id
+          targetConversation = created
         }
         if (isSupabaseConfigured && supabase) {
           const client = supabase
-          const conversationIdForSave = targetConversationId
-          void (async () => {
-            if (!conversationIdForSave) return
-            const { data: authData } = await client.auth.getUser()
-            const authUser = authData.user
-            if (!authUser) return
+          const conversationForSave = targetConversation
+          const conversationIdForSave = conversationForSave.id
+          deletedConversationIdsRef.current.delete(conversationIdForSave)
+          const previousSave = saveQueuesRef.current.get(conversationIdForSave) ?? Promise.resolve()
+          const nextSave = previousSave
+            .catch(() => undefined)
+            .then(async () => {
+              if (deletedConversationIdsRef.current.has(conversationIdForSave)) return
+              const { data: authData } = await client.auth.getUser()
+              const authUser = authData.user
+              if (!authUser) return
+              if (deletedConversationIdsRef.current.has(conversationIdForSave)) return
 
-            const { error: conversationError } = await client.from('conversations').upsert(
-              {
-                id: conversationIdForSave,
-                user_id: authUser.id,
-                title: makeTitle(messages),
-                voice_id: voiceId,
-                created_at: new Date(
-                  next.find((item) => item.id === conversationIdForSave)?.createdAt ?? now,
-                ).toISOString(),
-                updated_at: new Date(now).toISOString(),
-              },
-              { onConflict: 'id' },
-            )
+              const { error: conversationError } = await client.from('conversations').upsert(
+                {
+                  id: conversationIdForSave,
+                  user_id: authUser.id,
+                  title: conversationForSave.title,
+                  voice_id: conversationForSave.voiceId,
+                  created_at: new Date(conversationForSave.createdAt).toISOString(),
+                  updated_at: new Date(conversationForSave.updatedAt).toISOString(),
+                },
+                { onConflict: 'id' },
+              )
 
-            if (conversationError) return
+              if (conversationError) {
+                console.error('Could not save conversation metadata.', conversationError)
+                return
+              }
+              if (deletedConversationIdsRef.current.has(conversationIdForSave)) return
 
-            const rows = messages.map((message) => ({
-              id: message.id,
-              conversation_id: conversationIdForSave,
-              role: message.role,
-              text: message.text,
-              audio_url: message.audioUrl ?? null,
-              emotion: message.emotion ?? null,
-              ts: message.timestamp,
-              created_at: new Date(message.timestamp).toISOString(),
-            }))
-            if (rows.length > 0) {
-              await client.from('messages').upsert(rows, { onConflict: 'id' })
+              const rows = conversationForSave.messages.map((message) => ({
+                id: message.id,
+                conversation_id: conversationIdForSave,
+                role: message.role,
+                text: message.text,
+                audio_url: message.audioUrl ?? null,
+                emotion: message.emotion ?? null,
+                ts: message.timestamp,
+                created_at: new Date(message.timestamp).toISOString(),
+              }))
+              if (rows.length > 0) {
+                const { error: messagesError } = await client.from('messages').upsert(rows, { onConflict: 'id' })
+                if (messagesError) {
+                  console.error('Could not save conversation messages.', messagesError)
+                }
+              }
+            })
+          saveQueuesRef.current.set(conversationIdForSave, nextSave)
+          void nextSave.finally(() => {
+            if (saveQueuesRef.current.get(conversationIdForSave) === nextSave) {
+              saveQueuesRef.current.delete(conversationIdForSave)
             }
-          })()
+          })
         }
 
         return next
@@ -196,6 +224,7 @@ export function useConversations() {
         return next
       })
       setActiveId((prev) => (prev === id ? null : prev))
+      deletedConversationIdsRef.current.add(id)
 
       if (isSupabaseConfigured && supabase) {
         const client = supabase
