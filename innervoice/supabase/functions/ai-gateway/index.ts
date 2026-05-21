@@ -166,6 +166,9 @@ async function deleteVoice(payload: { voiceId: string }, auth: AuthenticatedUser
 
   const voiceId = String(payload.voiceId ?? '').trim()
   if (!voiceId) throw new Error('voiceId is required.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(voiceId)) {
+    throw new GatewayHttpError(403, 'Default voices cannot be deleted.')
+  }
   await assertVoiceBelongsToUser(voiceId, auth)
 
   const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
