@@ -77,6 +77,12 @@ function encodeBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
 async function readErrorText(response: Response) {
   try {
     const text = await response.text()
@@ -115,7 +121,7 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
   const bytes = decodeBase64(payload.audioBase64)
   const formData = new FormData()
   formData.append('name', payload.name)
-  formData.append('files', new Blob([bytes], { type: payload.mimeType || 'audio/webm' }), 'voice-sample.webm')
+  formData.append('files', new Blob([toArrayBuffer(bytes)], { type: payload.mimeType || 'audio/webm' }), 'voice-sample.webm')
 
   const response = await fetch('https://api.elevenlabs.io/v1/voices/add', {
     method: 'POST',
@@ -297,7 +303,7 @@ async function transcribeAudio(payload: {
   const openAiKey = Deno.env.get('OPENAI_API_KEY')
   const elevenKey = Deno.env.get('ELEVENLABS_API_KEY')
   const bytes = decodeBase64(payload.audioBase64)
-  const audioBlob = new Blob([bytes], { type: payload.mimeType || 'audio/webm' })
+  const audioBlob = new Blob([toArrayBuffer(bytes)], { type: payload.mimeType || 'audio/webm' })
 
   if (openAiKey) {
     const formData = new FormData()
