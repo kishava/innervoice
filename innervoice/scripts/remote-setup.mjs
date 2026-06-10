@@ -53,6 +53,28 @@ async function checkSchema() {
   return !uv && !la
 }
 
+async function testGatewayRejectsAnon() {
+  const pub = createClient(SUPABASE_URL, PUBLISHABLE, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { 'User-Agent': 'innervoice-setup/1.0' } },
+  })
+
+  const { data, error } = await pub.functions.invoke('ai-gateway', {
+    body: { action: '__auth_probe__' },
+  })
+
+  const bodyRejected =
+    data && typeof data === 'object' && 'ok' in data && data.ok === false && /sign in/i.test(String(data.error ?? ''))
+  const httpRejected = Boolean(error && /401|non-2xx|sign in|unauthorized/i.test(error.message))
+
+  if (bodyRejected || httpRejected) {
+    console.log('ai-gateway anon rejection OK')
+    return
+  }
+
+  console.log('ai-gateway anon rejection FAILED:', error?.message ?? JSON.stringify(data))
+}
+
 async function testGatewayWithUserSession() {
   const email = `setup-test-${Date.now()}@innervoice.local`
   const password = 'SetupTest123!'
@@ -121,6 +143,7 @@ async function main() {
   }
 
   console.log('\nTesting edge function...')
+  await testGatewayRejectsAnon()
   await testGatewayWithUserSession()
 }
 

@@ -4,6 +4,7 @@ const CORS_HEADERS = {
 }
 
 type GatewayResult<T> = { ok: true; data: T } | { ok: false; error: string }
+type AuthenticatedUser = { id: string }
 
 type ChatRequest = {
   model: string
@@ -22,6 +23,43 @@ function json<T>(status: number, body: GatewayResult<T>) {
       'Content-Type': 'application/json',
     },
   })
+}
+
+function unauthorized(message = 'Sign in before using InnerVoice AI features.') {
+  return json(401, { ok: false, error: message })
+}
+
+async function requireAuthenticatedUser(request: Request): Promise<AuthenticatedUser> {
+  const authHeader = request.headers.get('Authorization') ?? ''
+  const match = /^Bearer\s+(.+)$/i.exec(authHeader)
+  const accessToken = match?.[1]?.trim()
+  if (!accessToken) {
+    throw new Error('UNAUTHORIZED')
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase auth environment is not configured.')
+  }
+
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('UNAUTHORIZED')
+  }
+
+  const data = (await response.json()) as { id?: string }
+  if (!data.id) {
+    throw new Error('UNAUTHORIZED')
+  }
+
+  return { id: data.id }
 }
 
 function decodeBase64(base64: string): Uint8Array {
@@ -438,6 +476,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    await requireAuthenticatedUser(request)
     const payload = await request.json()
     const action = String(payload?.action ?? '')
 
@@ -486,6 +525,9 @@ Deno.serve(async (request) => {
         return json(400, { ok: false, error: `Unsupported action: ${action}` })
     }
   } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+      return unauthorized()
+    }
     const message = error instanceof Error ? error.message : 'Unknown backend error.'
     return json(500, { ok: false, error: message })
   }
