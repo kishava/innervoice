@@ -4,6 +4,7 @@ const CORS_HEADERS = {
 }
 
 type GatewayResult<T> = { ok: true; data: T } | { ok: false; error: string }
+type AuthenticatedUser = { id: string }
 
 type ChatRequest = {
   model: string
@@ -24,6 +25,43 @@ function json<T>(status: number, body: GatewayResult<T>) {
   })
 }
 
+function unauthorized(message = 'Sign in before using InnerVoice AI features.') {
+  return json(401, { ok: false, error: message })
+}
+
+async function requireAuthenticatedUser(request: Request): Promise<AuthenticatedUser> {
+  const authHeader = request.headers.get('Authorization') ?? ''
+  const match = /^Bearer\s+(.+)$/i.exec(authHeader)
+  const accessToken = match?.[1]?.trim()
+  if (!accessToken) {
+    throw new Error('UNAUTHORIZED')
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase auth environment is not configured.')
+  }
+
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('UNAUTHORIZED')
+  }
+
+  const data = (await response.json()) as { id?: string }
+  if (!data.id) {
+    throw new Error('UNAUTHORIZED')
+  }
+
+  return { id: data.id }
+}
+
 function decodeBase64(base64: string): Uint8Array {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
@@ -37,6 +75,12 @@ function encodeBase64(bytes: Uint8Array): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
   return btoa(binary)
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
 }
 
 async function readErrorText(response: Response) {
@@ -77,7 +121,7 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
   const bytes = decodeBase64(payload.audioBase64)
   const formData = new FormData()
   formData.append('name', payload.name)
-  formData.append('files', new Blob([bytes], { type: payload.mimeType || 'audio/webm' }), 'voice-sample.webm')
+  formData.append('files', new Blob([toArrayBuffer(bytes)], { type: payload.mimeType || 'audio/webm' }), 'voice-sample.webm')
 
   const response = await fetch('https://api.elevenlabs.io/v1/voices/add', {
     method: 'POST',
@@ -259,7 +303,7 @@ async function transcribeAudio(payload: {
   const openAiKey = Deno.env.get('OPENAI_API_KEY')
   const elevenKey = Deno.env.get('ELEVENLABS_API_KEY')
   const bytes = decodeBase64(payload.audioBase64)
-  const audioBlob = new Blob([bytes], { type: payload.mimeType || 'audio/webm' })
+  const audioBlob = new Blob([toArrayBuffer(bytes)], { type: payload.mimeType || 'audio/webm' })
 
   if (openAiKey) {
     const formData = new FormData()
@@ -438,6 +482,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    await requireAuthenticatedUser(request)
     const payload = await request.json()
     const action = String(payload?.action ?? '')
 
@@ -486,6 +531,9 @@ Deno.serve(async (request) => {
         return json(400, { ok: false, error: `Unsupported action: ${action}` })
     }
   } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+      return unauthorized()
+    }
     const message = error instanceof Error ? error.message : 'Unknown backend error.'
     return json(500, { ok: false, error: message })
   }
