@@ -48,6 +48,14 @@ async function readErrorText(response: Response) {
   }
 }
 
+function getAuthHeader(request: Request): string {
+  const authHeader = request.headers.get('Authorization')?.trim() ?? ''
+  if (!/^Bearer\s+\S+/i.test(authHeader)) {
+    throw new Error('Sign in before using the backend gateway.')
+  }
+  return authHeader
+}
+
 async function chatCompletion(request: ChatRequest) {
   const key = Deno.env.get('OPENAI_API_KEY')
   if (!key) throw new Error('OPENAI_API_KEY is missing in Supabase secrets.')
@@ -96,12 +104,14 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
   return { voiceId: data.voice_id as string }
 }
 
-async function deleteVoice(payload: { voiceId: string }) {
+async function deleteVoice(payload: { voiceId: string }, authHeader: string) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
 
   const voiceId = String(payload.voiceId ?? '').trim()
   if (!voiceId) throw new Error('voiceId is required.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(voiceId)) throw new Error('Default voices cannot be deleted.')
+  await assertUserOwnsVoice(voiceId, authHeader)
 
   const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
     method: 'DELETE',
@@ -164,9 +174,10 @@ async function textToSpeech(payload: {
   outputFormat: string
   realtime: boolean
   emotion?: string
-}) {
+}, authHeader: string) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+  const voiceId = await assertUserCanUseVoice(payload.voiceId, authHeader)
 
   const headers = {
     'Content-Type': 'application/json',
@@ -180,7 +191,7 @@ async function textToSpeech(payload: {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        inputs: [{ text: payload.text, voice_id: payload.voiceId }],
+        inputs: [{ text: payload.text, voice_id: voiceId }],
         model_id: 'eleven_v3',
         settings: { stability: payload.stability },
         apply_text_normalization: 'off',
@@ -198,7 +209,7 @@ async function textToSpeech(payload: {
 
   const latencyParam = payload.realtime ? '&optimize_streaming_latency=3' : ''
   const speechV3 = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${payload.voiceId}?output_format=${payload.outputFormat}${latencyParam}`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${payload.outputFormat}${latencyParam}`,
     {
       method: 'POST',
       headers,
@@ -228,7 +239,7 @@ async function textToSpeech(payload: {
   // v2 fallback — tag-free but emotionally tuned per user emotion.
   const v2Settings = v2SettingsForEmotion(payload.emotion ?? 'neutral')
   const speechV2 = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${payload.voiceId}?output_format=${payload.outputFormat}`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${payload.outputFormat}`,
     {
       method: 'POST',
       headers,
@@ -321,6 +332,64 @@ const DEFAULT_ELEVENLABS_VOICE_IDS = new Set([
   'AZnzlk1XvdvUeBnXmlld',
 ])
 
+async function hasOwnedVoiceRow(table: 'profiles' | 'user_voices', column: 'voice_id' | 'elevenlabs_voice_id', voiceId: string, authHeader: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('VITE_SUPABASE_ANON_KEY')
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Supabase REST credentials are missing in Edge Function secrets.')
+  }
+
+  const url = new URL(`/rest/v1/${table}`, supabaseUrl)
+  url.searchParams.set('select', 'id')
+  url.searchParams.set(column, `eq.${voiceId}`)
+  url.searchParams.set('limit', '1')
+
+  const response = await fetch(url, {
+    headers: {
+      apikey: anonKey,
+      Authorization: authHeader,
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Could not verify voice ownership (${response.status}): ${await readErrorText(response)}`)
+  }
+
+  const rows = (await response.json()) as unknown
+  return Array.isArray(rows) && rows.length > 0
+}
+
+async function assertUserOwnsVoice(voiceId: string, authHeader: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('A trained voice is required.')
+
+  const inLibrary = await hasOwnedVoiceRow('user_voices', 'elevenlabs_voice_id', id, authHeader)
+  if (inLibrary) return id
+
+  const isProfileVoice = await hasOwnedVoiceRow('profiles', 'voice_id', id, authHeader)
+  if (isProfileVoice) return id
+
+  throw new Error('This voice is not in your InnerVoice account. Select one of your saved voices, then try again.')
+}
+
+async function assertUserCanUseVoice(voiceId: string, authHeader: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('A trained voice is required.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(id)) return id
+  return assertUserOwnsVoice(id, authHeader)
+}
+
+function configuredAgentId(requestedAgentId?: string) {
+  const configured = String(Deno.env.get('ELEVENLABS_AGENT_ID') ?? DEFAULT_AGENT_ID).trim()
+  const requested = String(requestedAgentId ?? configured).trim()
+  if (!configured) throw new Error('agentId is required for live talk.')
+  if (requested && requested !== configured) {
+    throw new Error('This live talk agent is not authorized.')
+  }
+  return configured
+}
+
 async function assertVoiceExists(voiceId: string, key: string) {
   const id = voiceId.trim()
   if (!id) throw new Error('A trained voice is required for live talk.')
@@ -377,14 +446,12 @@ async function ensureLivePromptOverrides(agentId: string, key: string) {
 }
 
 /** Mint WebRTC token + prepare InnerVoice agent (voice on agent, prompt via client overrides). */
-async function getConversationToken(payload: { agentId?: string; voiceId?: string }) {
+async function getConversationToken(payload: { agentId?: string; voiceId?: string }, authHeader: string) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
 
-  const agentId = String(payload?.agentId ?? Deno.env.get('ELEVENLABS_AGENT_ID') ?? DEFAULT_AGENT_ID).trim()
-  const voiceId = String(payload?.voiceId ?? '').trim()
-  if (!agentId) throw new Error('agentId is required for live talk.')
-  if (!voiceId) throw new Error('voiceId is required for live talk.')
+  const agentId = configuredAgentId(payload?.agentId)
+  const voiceId = await assertUserCanUseVoice(String(payload?.voiceId ?? ''), authHeader)
 
   await assertVoiceExists(voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
@@ -405,14 +472,12 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
 }
 
 /** Mint WebSocket signed URL + prepare InnerVoice agent for client-side audio streaming. */
-async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }) {
+async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }, authHeader: string) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
 
-  const agentId = String(payload?.agentId ?? Deno.env.get('ELEVENLABS_AGENT_ID') ?? DEFAULT_AGENT_ID).trim()
-  const voiceId = String(payload?.voiceId ?? '').trim()
-  if (!agentId) throw new Error('agentId is required for live talk.')
-  if (!voiceId) throw new Error('voiceId is required for live talk.')
+  const agentId = configuredAgentId(payload?.agentId)
+  const voiceId = await assertUserCanUseVoice(String(payload?.voiceId ?? ''), authHeader)
 
   await assertVoiceExists(voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
@@ -438,6 +503,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const authHeader = getAuthHeader(request)
     const payload = await request.json()
     const action = String(payload?.action ?? '')
 
@@ -461,6 +527,7 @@ Deno.serve(async (request) => {
             realtime: boolean
             emotion?: string
           },
+          authHeader,
         )
         return json(200, { ok: true, data })
       }
@@ -471,15 +538,15 @@ Deno.serve(async (request) => {
         return json(200, { ok: true, data })
       }
       case 'getConversationToken': {
-        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string })
+        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string }, authHeader)
         return json(200, { ok: true, data })
       }
       case 'getConversationSignedUrl': {
-        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string })
+        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string }, authHeader)
         return json(200, { ok: true, data })
       }
       case 'deleteVoice': {
-        const data = await deleteVoice(payload as { voiceId: string })
+        const data = await deleteVoice(payload as { voiceId: string }, authHeader)
         return json(200, { ok: true, data })
       }
       default:

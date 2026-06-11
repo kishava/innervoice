@@ -42,12 +42,14 @@ async function gatewayErrorMessage(error: unknown): Promise<string> {
   return 'Unable to reach backend gateway.'
 }
 
-/** Attach a fresh user JWT when available; omit if missing (ai-gateway allows anon when verify_jwt is off). */
-async function optionalAuthHeaders(): Promise<Record<string, string>> {
-  if (!supabase) return {}
+/** Attach a fresh user JWT; ai-gateway rejects anonymous requests because it holds server-side provider keys. */
+async function authHeaders(): Promise<Record<string, string>> {
+  if (!supabase) throw new Error('Sign in to use the backend gateway.')
 
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-  if (sessionError || !sessionData.session?.access_token) return {}
+  if (sessionError || !sessionData.session?.access_token) {
+    throw new Error('Session expired. Sign in again, then retry.')
+  }
 
   let accessToken = sessionData.session.access_token
   const expiresAt = sessionData.session.expires_at
@@ -58,10 +60,12 @@ async function optionalAuthHeaders(): Promise<Record<string, string>> {
     const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
     if (!refreshError && refreshed.session?.access_token) {
       accessToken = refreshed.session.access_token
+    } else {
+      throw new Error('Session expired. Sign in again, then retry.')
     }
   }
 
-  if (!accessToken) return {}
+  if (!accessToken) throw new Error('Session expired. Sign in again, then retry.')
   return { Authorization: `Bearer ${accessToken}` }
 }
 
@@ -72,7 +76,7 @@ export async function invokeGateway<T>(action: string, payload: Record<string, u
 
   const { data, error } = await supabase.functions.invoke<GatewayResponse<T>>('ai-gateway', {
     body: { action, ...payload },
-    headers: await optionalAuthHeaders(),
+    headers: await authHeaders(),
   })
 
   if (error) {
