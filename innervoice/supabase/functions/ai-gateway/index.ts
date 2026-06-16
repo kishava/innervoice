@@ -14,6 +14,10 @@ type ChatRequest = {
   messages: Array<{ role: string; content: string }>
 }
 
+class AuthError extends Error {
+  status = 401
+}
+
 function json<T>(status: number, body: GatewayResult<T>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -22,6 +26,46 @@ function json<T>(status: number, body: GatewayResult<T>) {
       'Content-Type': 'application/json',
     },
   })
+}
+
+function getBearerToken(request: Request) {
+  const authHeader = request.headers.get('authorization') ?? ''
+  const match = authHeader.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() ?? ''
+}
+
+async function requireAuthenticatedUser(request: Request) {
+  const token = getBearerToken(request)
+  if (!token) {
+    throw new AuthError('Sign in to use the backend gateway.')
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.replace(/\/+$/, '')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Supabase auth environment is not configured.')
+  }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (response.status === 401 || response.status === 403) {
+    throw new AuthError('Session expired or invalid. Sign in again and retry.')
+  }
+  if (!response.ok) {
+    throw new Error(`Could not verify session (${response.status}): ${await readErrorText(response)}`)
+  }
+
+  const user = (await response.json()) as { id?: string }
+  if (!user.id) {
+    throw new AuthError('Session expired or invalid. Sign in again and retry.')
+  }
+
+  return user
 }
 
 function decodeBase64(base64: string): Uint8Array {
@@ -441,6 +485,8 @@ Deno.serve(async (request) => {
     const payload = await request.json()
     const action = String(payload?.action ?? '')
 
+    await requireAuthenticatedUser(request)
+
     switch (action) {
       case 'chatCompletion': {
         const data = await chatCompletion(payload.request as ChatRequest)
@@ -487,6 +533,9 @@ Deno.serve(async (request) => {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown backend error.'
+    if (error instanceof AuthError) {
+      return json(error.status, { ok: false, error: message })
+    }
     return json(500, { ok: false, error: message })
   }
 })
