@@ -188,6 +188,18 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
       if (countError && !isMissingUserVoicesTable(countError)) throw countError
 
       const existing = voices.find((v) => v.elevenlabsVoiceId === elevenlabsVoiceId)
+      if (!existing) {
+        const { data: savedExisting, error: existingError } = await supabase
+          .from('user_voices')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('elevenlabs_voice_id', elevenlabsVoiceId)
+          .maybeSingle()
+
+        if (existingError && !isMissingUserVoicesTable(existingError)) throw existingError
+        if (savedExisting) return saveVoiceRow(elevenlabsVoiceId, trimmed)
+      }
+
       if (!existing && (count ?? voices.length) >= MAX_VOICES_PER_USER) {
         try {
           await deleteRemoteVoice(elevenlabsVoiceId)
