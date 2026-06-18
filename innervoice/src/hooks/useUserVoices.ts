@@ -180,6 +180,18 @@ export function useUserVoices(userId: string | null, activeVoiceId: string | nul
       const trimmed = name.trim()
       if (!trimmed) throw new Error('Voice name cannot be empty.')
 
+      const { data: existingRow, error: existingError } = await supabase
+        .from('user_voices')
+        .select('id,elevenlabs_voice_id,name,created_at')
+        .eq('user_id', userId)
+        .eq('elevenlabs_voice_id', elevenlabsVoiceId)
+        .maybeSingle()
+
+      if (existingError && !isMissingUserVoicesTable(existingError)) throw existingError
+      if (existingRow) {
+        return saveVoiceRow(elevenlabsVoiceId, trimmed, false)
+      }
+
       const { count, error: countError } = await supabase
         .from('user_voices')
         .select('id', { count: 'exact', head: true })

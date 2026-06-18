@@ -14,6 +14,22 @@ type ChatRequest = {
   messages: Array<{ role: string; content: string }>
 }
 
+type AuthenticatedUser = {
+  id: string
+  token: string
+}
+
+const MAX_VOICES_PER_USER = 2
+
+class GatewayError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
 function json<T>(status: number, body: GatewayResult<T>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -39,6 +55,12 @@ function encodeBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy.buffer
+}
+
 async function readErrorText(response: Response) {
   try {
     const text = await response.text()
@@ -46,6 +68,143 @@ async function readErrorText(response: Response) {
   } catch {
     return response.statusText
   }
+}
+
+function requireEnv(name: string) {
+  const value = Deno.env.get(name)
+  if (!value) throw new GatewayError(500, `${name} is missing in Supabase secrets.`)
+  return value
+}
+
+function supabaseBaseUrl() {
+  return requireEnv('SUPABASE_URL').replace(/\/+$/, '')
+}
+
+function supabaseAnonKey() {
+  return requireEnv('SUPABASE_ANON_KEY')
+}
+
+function bearerToken(request: Request) {
+  const authorization = request.headers.get('authorization') ?? ''
+  const match = authorization.match(/^Bearer\s+(.+)$/i)
+  const token = match?.[1]?.trim()
+  if (!token) throw new GatewayError(401, 'Sign in to use InnerVoice.')
+  return token
+}
+
+async function requireAuthenticatedUser(request: Request): Promise<AuthenticatedUser> {
+  const token = bearerToken(request)
+  const response = await fetch(`${supabaseBaseUrl()}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnonKey(),
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new GatewayError(401, 'Session expired or invalid. Log out, sign in again, then retry.')
+  }
+
+  const user = (await response.json()) as { id?: string }
+  if (!user.id) throw new GatewayError(401, 'Session expired or invalid. Log out, sign in again, then retry.')
+
+  return { id: user.id, token }
+}
+
+function restUrl(table: string) {
+  return new URL(`${supabaseBaseUrl()}/rest/v1/${table}`)
+}
+
+async function selectOwnRows<T>(
+  user: AuthenticatedUser,
+  table: string,
+  select: string,
+  filters: Record<string, string>,
+  limit = 1,
+): Promise<T[]> {
+  const url = restUrl(table)
+  url.searchParams.set('select', select)
+  url.searchParams.set('limit', String(limit))
+  for (const [key, value] of Object.entries(filters)) {
+    url.searchParams.set(key, `eq.${value}`)
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      apikey: supabaseAnonKey(),
+      Authorization: `Bearer ${user.token}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new GatewayError(500, `Could not verify account data (${response.status}): ${await readErrorText(response)}`)
+  }
+
+  return (await response.json()) as T[]
+}
+
+async function insertOwnVoice(user: AuthenticatedUser, voiceId: string, name: string) {
+  const response = await fetch(restUrl('user_voices'), {
+    method: 'POST',
+    headers: {
+      apikey: supabaseAnonKey(),
+      Authorization: `Bearer ${user.token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      user_id: user.id,
+      elevenlabs_voice_id: voiceId,
+      name,
+    }),
+  })
+
+  if (!response.ok) {
+    const detail = await readErrorText(response)
+    const message = /Voice limit/i.test(detail)
+      ? 'Voice limit reached (maximum 2 per account)'
+      : `Could not save cloned voice (${response.status}): ${detail}`
+    throw new GatewayError(response.status === 409 ? 409 : 500, message)
+  }
+}
+
+async function ensureCanCloneVoice(user: AuthenticatedUser) {
+  const rows = await selectOwnRows<{ id: string }>(
+    user,
+    'user_voices',
+    'id',
+    { user_id: user.id },
+    MAX_VOICES_PER_USER,
+  )
+  if (rows.length >= MAX_VOICES_PER_USER) {
+    throw new GatewayError(409, 'Voice limit reached (maximum 2 per account)')
+  }
+}
+
+async function authorizeVoiceAccess(user: AuthenticatedUser, voiceId: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('voiceId is required.')
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(id)) return
+
+  const voiceRows = await selectOwnRows<{ id: string }>(
+    user,
+    'user_voices',
+    'id',
+    { user_id: user.id, elevenlabs_voice_id: id },
+    1,
+  )
+  if (voiceRows.length > 0) return
+
+  const profileRows = await selectOwnRows<{ id: string }>(
+    user,
+    'profiles',
+    'id',
+    { id: user.id, voice_id: id },
+    1,
+  )
+  if (profileRows.length > 0) return
+
+  throw new GatewayError(403, 'This voice does not belong to your account.')
 }
 
 async function chatCompletion(request: ChatRequest) {
@@ -70,14 +229,24 @@ async function chatCompletion(request: ChatRequest) {
   return { content }
 }
 
-async function cloneVoice(payload: { name: string; audioBase64: string; mimeType: string }) {
+async function cloneVoice(
+  payload: { name: string; audioBase64: string; mimeType: string },
+  user: AuthenticatedUser,
+) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
 
+  await ensureCanCloneVoice(user)
+
+  const name = payload.name.trim() || 'My future self'
   const bytes = decodeBase64(payload.audioBase64)
   const formData = new FormData()
-  formData.append('name', payload.name)
-  formData.append('files', new Blob([bytes], { type: payload.mimeType || 'audio/webm' }), 'voice-sample.webm')
+  formData.append('name', name)
+  formData.append(
+    'files',
+    new Blob([bytesToArrayBuffer(bytes)], { type: payload.mimeType || 'audio/webm' }),
+    'voice-sample.webm',
+  )
 
   const response = await fetch('https://api.elevenlabs.io/v1/voices/add', {
     method: 'POST',
@@ -93,17 +262,27 @@ async function cloneVoice(payload: { name: string; audioBase64: string; mimeType
 
   const data = await response.json()
   if (!data?.voice_id) throw new Error('ElevenLabs response did not include voice_id.')
-  return { voiceId: data.voice_id as string }
+
+  const voiceId = data.voice_id as string
+  try {
+    await insertOwnVoice(user, voiceId, name)
+  } catch (error) {
+    try {
+      await deleteElevenLabsVoice(voiceId, key)
+    } catch {
+      /* avoid masking the database error with best-effort cleanup */
+    }
+    throw error
+  }
+
+  return { voiceId }
 }
 
-async function deleteVoice(payload: { voiceId: string }) {
-  const key = Deno.env.get('ELEVENLABS_API_KEY')
-  if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+async function deleteElevenLabsVoice(voiceId: string, key: string) {
+  const id = voiceId.trim()
+  if (!id) throw new Error('voiceId is required.')
 
-  const voiceId = String(payload.voiceId ?? '').trim()
-  if (!voiceId) throw new Error('voiceId is required.')
-
-  const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(voiceId)}`, {
+  const response = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'xi-api-key': key },
   })
@@ -113,6 +292,18 @@ async function deleteVoice(payload: { voiceId: string }) {
   }
 
   return { deleted: true }
+}
+
+async function deleteVoice(payload: { voiceId: string }, user: AuthenticatedUser) {
+  const key = Deno.env.get('ELEVENLABS_API_KEY')
+  if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+
+  const voiceId = String(payload.voiceId ?? '').trim()
+  if (DEFAULT_ELEVENLABS_VOICE_IDS.has(voiceId)) {
+    throw new GatewayError(403, 'Default voices cannot be deleted.')
+  }
+  await authorizeVoiceAccess(user, voiceId)
+  return deleteElevenLabsVoice(voiceId, key)
 }
 
 // Map our emotion taxonomy to ElevenLabs v2 voice_settings.
@@ -156,17 +347,21 @@ function v2SettingsForEmotion(emotion: string) {
   }
 }
 
-async function textToSpeech(payload: {
-  text: string
-  plainText: string
-  voiceId: string
-  stability: number
-  outputFormat: string
-  realtime: boolean
-  emotion?: string
-}) {
+async function textToSpeech(
+  payload: {
+    text: string
+    plainText: string
+    voiceId: string
+    stability: number
+    outputFormat: string
+    realtime: boolean
+    emotion?: string
+  },
+  user: AuthenticatedUser,
+) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is missing in Supabase secrets.')
+  await authorizeVoiceAccess(user, payload.voiceId)
 
   const headers = {
     'Content-Type': 'application/json',
@@ -259,7 +454,7 @@ async function transcribeAudio(payload: {
   const openAiKey = Deno.env.get('OPENAI_API_KEY')
   const elevenKey = Deno.env.get('ELEVENLABS_API_KEY')
   const bytes = decodeBase64(payload.audioBase64)
-  const audioBlob = new Blob([bytes], { type: payload.mimeType || 'audio/webm' })
+  const audioBlob = new Blob([bytesToArrayBuffer(bytes)], { type: payload.mimeType || 'audio/webm' })
 
   if (openAiKey) {
     const formData = new FormData()
@@ -377,7 +572,7 @@ async function ensureLivePromptOverrides(agentId: string, key: string) {
 }
 
 /** Mint WebRTC token + prepare InnerVoice agent (voice on agent, prompt via client overrides). */
-async function getConversationToken(payload: { agentId?: string; voiceId?: string }) {
+async function getConversationToken(payload: { agentId?: string; voiceId?: string }, user: AuthenticatedUser) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
 
@@ -386,6 +581,7 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
   if (!agentId) throw new Error('agentId is required for live talk.')
   if (!voiceId) throw new Error('voiceId is required for live talk.')
 
+  await authorizeVoiceAccess(user, voiceId)
   await assertVoiceExists(voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
 
@@ -405,7 +601,7 @@ async function getConversationToken(payload: { agentId?: string; voiceId?: strin
 }
 
 /** Mint WebSocket signed URL + prepare InnerVoice agent for client-side audio streaming. */
-async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }) {
+async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: string }, user: AuthenticatedUser) {
   const key = Deno.env.get('ELEVENLABS_API_KEY')
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.')
 
@@ -414,6 +610,7 @@ async function getConversationSignedUrl(payload: { agentId?: string; voiceId?: s
   if (!agentId) throw new Error('agentId is required for live talk.')
   if (!voiceId) throw new Error('voiceId is required for live talk.')
 
+  await authorizeVoiceAccess(user, voiceId)
   await assertVoiceExists(voiceId, key)
   await ensureLivePromptOverrides(agentId, key)
 
@@ -438,6 +635,7 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const user = await requireAuthenticatedUser(request)
     const payload = await request.json()
     const action = String(payload?.action ?? '')
 
@@ -447,7 +645,7 @@ Deno.serve(async (request) => {
         return json(200, { ok: true, data })
       }
       case 'cloneVoice': {
-        const data = await cloneVoice(payload as { name: string; audioBase64: string; mimeType: string })
+        const data = await cloneVoice(payload as { name: string; audioBase64: string; mimeType: string }, user)
         return json(200, { ok: true, data })
       }
       case 'textToSpeech': {
@@ -461,6 +659,7 @@ Deno.serve(async (request) => {
             realtime: boolean
             emotion?: string
           },
+          user,
         )
         return json(200, { ok: true, data })
       }
@@ -471,15 +670,15 @@ Deno.serve(async (request) => {
         return json(200, { ok: true, data })
       }
       case 'getConversationToken': {
-        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string })
+        const data = await getConversationToken(payload as { agentId?: string; voiceId?: string }, user)
         return json(200, { ok: true, data })
       }
       case 'getConversationSignedUrl': {
-        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string })
+        const data = await getConversationSignedUrl(payload as { agentId?: string; voiceId?: string }, user)
         return json(200, { ok: true, data })
       }
       case 'deleteVoice': {
-        const data = await deleteVoice(payload as { voiceId: string })
+        const data = await deleteVoice(payload as { voiceId: string }, user)
         return json(200, { ok: true, data })
       }
       default:
@@ -487,6 +686,7 @@ Deno.serve(async (request) => {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown backend error.'
-    return json(500, { ok: false, error: message })
+    const status = error instanceof GatewayError ? error.status : 500
+    return json(status, { ok: false, error: message })
   }
 })
