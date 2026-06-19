@@ -42,7 +42,7 @@ async function gatewayErrorMessage(error: unknown): Promise<string> {
   return 'Unable to reach backend gateway.'
 }
 
-/** Attach a fresh user JWT when available; omit if missing (ai-gateway allows anon when verify_jwt is off). */
+/** Attach a fresh user JWT for ai-gateway actions that require an authenticated session. */
 async function optionalAuthHeaders(): Promise<Record<string, string>> {
   if (!supabase) return {}
 

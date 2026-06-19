@@ -366,9 +366,9 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
-# ai-gateway uses server-side API keys only; allow invoke with publishable/anon key (no user JWT).
+# ai-gateway uses server-side API keys and requires a signed-in user JWT.
 [functions.ai-gateway]
-verify_jwt = false
+verify_jwt = true
 
 [edge_runtime]
 enabled = true
